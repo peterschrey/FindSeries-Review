@@ -13,8 +13,10 @@
   },
   "dependencies": {
     "@findseries/review-shared": "file:../shared",
+    "@types/sharp": "^0.31.1",
     "better-sqlite3": "^11.8.1",
     "fastify": "^5.2.1",
+    "sharp": "^0.35.3",
     "zod": "^3.24.2"
   },
   "devDependencies": {

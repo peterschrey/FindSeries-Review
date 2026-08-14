@@ -14,14 +14,27 @@ const deleteRoots = (process.env.REVIEW_DELETE_ROOTS ?? '')
   .split(';')
   .map((s) => s.trim())
   .filter(Boolean);
+const mediaRoots = (process.env.REVIEW_MEDIA_ROOTS ?? process.env.REVIEW_DELETE_ROOTS ?? '')
+  .split(';')
+  .map((s) => s.trim())
+  .filter(Boolean);
+const thumbCacheDir =
+  process.env.REVIEW_THUMB_CACHE_DIR ??
+  path.resolve('C:/Temp/FindSeries-Review-Test/thumb-cache');
 
 async function main() {
   const readonly = process.env.REVIEW_DB_READONLY === '1';
   const db = openReviewDb(databasePath, { readonly });
-  const app = await buildServer({ db, finalizeLogDir, deleteRoots });
+  const app = await buildServer({
+    db,
+    finalizeLogDir,
+    deleteRoots,
+    mediaRoots,
+    thumbCacheDir,
+  });
   await app.listen({ port, host });
   console.log(
-    `review-api listening on http://${host}:${port} db=${databasePath} deleteRoots=${deleteRoots.length}`,
+    `review-api listening on http://${host}:${port} db=${databasePath} mediaRoots=${mediaRoots.length}`,
   );
 }
 
