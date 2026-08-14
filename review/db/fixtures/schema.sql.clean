@@ -1,0 +1,412 @@
+﻿CREATE TABLE schema_migrations (
+    version INTEGER PRIMARY KEY,
+    applied_at TEXT NOT NULL
+);
+CREATE TABLE settings (
+    key TEXT PRIMARY KEY,
+    value TEXT,
+    updated_at TEXT NOT NULL
+);
+CREATE TABLE projects (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+    slug TEXT NOT NULL COLLATE NOCASE UNIQUE,
+    profile TEXT NOT NULL,
+    language TEXT NOT NULL DEFAULT 'de',
+    config_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE TABLE runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    mode TEXT NOT NULL,
+    status TEXT NOT NULL,
+    profile TEXT,
+    parameters_json TEXT,
+    started_at TEXT NOT NULL,
+    finished_at TEXT,
+    error TEXT
+);
+CREATE INDEX ix_runs_project_status ON runs(project_id, status);
+CREATE TABLE categories (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    normalized_title TEXT NOT NULL COLLATE NOCASE UNIQUE,
+    created_at TEXT NOT NULL
+);
+CREATE TABLE project_categories (
+    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    category_id INTEGER NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
+    parent_category_id INTEGER REFERENCES categories(id),
+    depth INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    continuation_json TEXT,
+    member_count INTEGER NOT NULL DEFAULT 0,
+    file_count INTEGER NOT NULL DEFAULT 0,
+    child_count INTEGER NOT NULL DEFAULT 0,
+    lease_owner TEXT,
+    lease_until TEXT,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT,
+    discovered_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY(project_id, category_id)
+);
+CREATE INDEX ix_project_categories_queue ON project_categories(project_id, status, depth, category_id);
+CREATE INDEX ix_project_categories_lease ON project_categories(project_id, lease_until);
+CREATE TABLE media (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    page_id INTEGER,
+    title TEXT NOT NULL COLLATE NOCASE UNIQUE,
+    normalized_title TEXT COLLATE NOCASE,
+    canonical_title TEXT,
+    sha1 TEXT,
+    url TEXT,
+    description_url TEXT,
+    mime TEXT,
+    media_type TEXT,
+    size INTEGER,
+    width INTEGER,
+    height INTEGER,
+    current_uploader TEXT,
+    current_timestamp TEXT,
+    original_uploader TEXT,
+    original_timestamp TEXT,
+    description TEXT,
+    creator TEXT,
+    license TEXT,
+    license_url TEXT,
+    attribution TEXT,
+    latitude REAL,
+    longitude REAL,
+    metadata_json TEXT,
+    metadata_level INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+, metadata_checked_level INTEGER NOT NULL DEFAULT 0);
+CREATE INDEX ix_media_page_id ON media(page_id) WHERE page_id IS NOT NULL AND page_id > 0;
+CREATE INDEX ix_media_sha1 ON media(sha1);
+CREATE INDEX ix_media_metadata ON media(metadata_level, id);
+CREATE TABLE media_identities (
+    identity_type TEXT NOT NULL CHECK(identity_type IN ('sha1','pageid','title')),
+    identity_value TEXT NOT NULL COLLATE NOCASE,
+    media_id INTEGER NOT NULL REFERENCES media(id) ON DELETE CASCADE,
+    source TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY(identity_type, identity_value)
+);
+CREATE INDEX ix_media_identities_media ON media_identities(media_id, identity_type);
+CREATE TABLE media_identity_conflicts (
+    media_id_a INTEGER NOT NULL,
+    media_id_b INTEGER NOT NULL,
+    reason TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY(media_id_a,media_id_b,reason),
+    CHECK(media_id_a < media_id_b)
+);
+CREATE INDEX ix_media_identity_conflicts_created ON media_identity_conflicts(created_at,media_id_a,media_id_b);
+CREATE TABLE media_merge_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    survivor_media_id INTEGER NOT NULL,
+    duplicate_media_id INTEGER NOT NULL,
+    reason TEXT NOT NULL,
+    merged_at TEXT NOT NULL
+);
+CREATE INDEX ix_media_merge_log_survivor ON media_merge_log(survivor_media_id, id);
+CREATE TABLE project_media (
+    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    media_id INTEGER NOT NULL REFERENCES media(id) ON DELETE CASCADE,
+    score INTEGER NOT NULL DEFAULT 0,
+    best_source TEXT,
+    selected INTEGER NOT NULL DEFAULT 1,
+    download_requested INTEGER NOT NULL DEFAULT 0,
+    first_seen_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY(project_id, media_id)
+);
+CREATE INDEX ix_project_media_score ON project_media(project_id, selected, score DESC, media_id);
+CREATE TABLE discoveries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    media_id INTEGER NOT NULL REFERENCES media(id) ON DELETE CASCADE,
+    source_type TEXT NOT NULL,
+    source_value TEXT,
+    score INTEGER NOT NULL,
+    language TEXT,
+    query_text TEXT,
+    origin_category_id INTEGER REFERENCES categories(id),
+    parent_media_id INTEGER REFERENCES media(id),
+    details_json TEXT,
+    created_at TEXT NOT NULL
+);
+CREATE UNIQUE INDEX ux_discovery_identity ON discoveries(
+    project_id, media_id, source_type,
+    ifnull(source_value,''), ifnull(query_text,''), ifnull(parent_media_id,0)
+);
+CREATE INDEX ix_discoveries_project_media ON discoveries(project_id, media_id);
+CREATE TABLE search_tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    task_type TEXT NOT NULL,
+    query_key TEXT NOT NULL,
+    query_text TEXT NOT NULL,
+    language TEXT,
+    score INTEGER NOT NULL,
+    max_results INTEGER NOT NULL,
+    results_count INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'pending',
+    continuation_json TEXT,
+    lease_owner TEXT,
+    lease_until TEXT,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE(project_id, query_key)
+);
+CREATE INDEX ix_search_tasks_queue ON search_tasks(project_id, status, id);
+CREATE TABLE metadata_tasks (
+    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    media_id INTEGER NOT NULL REFERENCES media(id) ON DELETE CASCADE,
+    required_level INTEGER NOT NULL DEFAULT 1,
+    status TEXT NOT NULL DEFAULT 'pending',
+    lease_owner TEXT,
+    lease_until TEXT,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY(project_id, media_id)
+);
+CREATE INDEX ix_metadata_tasks_queue ON metadata_tasks(project_id, status, media_id);
+CREATE TABLE neighbor_tasks (
+    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    media_id INTEGER NOT NULL REFERENCES media(id) ON DELETE CASCADE,
+    status TEXT NOT NULL DEFAULT 'pending',
+    continuation_json TEXT,
+    lease_owner TEXT,
+    lease_until TEXT,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    api_pages INTEGER NOT NULL DEFAULT 0,
+    results_count INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY(project_id, media_id)
+);
+CREATE INDEX ix_neighbor_tasks_queue ON neighbor_tasks(project_id, status, media_id);
+CREATE TABLE downloads (
+    media_id INTEGER PRIMARY KEY REFERENCES media(id) ON DELETE CASCADE,
+    status TEXT NOT NULL DEFAULT 'pending',
+    local_path TEXT,
+    bytes INTEGER,
+    verified_sha1 TEXT,
+    historical_complete INTEGER NOT NULL DEFAULT 0,
+    owner_project_id INTEGER REFERENCES projects(id),
+    lease_owner TEXT,
+    lease_until TEXT,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX ix_downloads_status ON downloads(status, lease_until);
+CREATE TABLE download_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    media_id INTEGER NOT NULL REFERENCES media(id) ON DELETE CASCADE,
+    project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+    source_kind TEXT NOT NULL,
+    source_path TEXT,
+    status TEXT NOT NULL,
+    local_path TEXT,
+    local_filename TEXT,
+    registered_at TEXT,
+    imported_at TEXT NOT NULL,
+    details_json TEXT,
+    UNIQUE(media_id,source_kind,source_path,registered_at)
+);
+CREATE INDEX ix_download_history_media ON download_history(media_id,id);
+CREATE INDEX ix_download_history_project ON download_history(project_id,id);
+CREATE TABLE project_downloads (
+    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    media_id INTEGER NOT NULL REFERENCES media(id) ON DELETE CASCADE,
+    status TEXT NOT NULL DEFAULT 'pending',
+    lease_owner TEXT,
+    lease_until TEXT,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY(project_id, media_id)
+);
+CREATE INDEX ix_project_downloads_queue ON project_downloads(project_id, status, media_id);
+CREATE TABLE translation_concepts (
+    concept_id TEXT PRIMARY KEY,
+    seed_term TEXT,
+    seed_key TEXT COLLATE NOCASE,
+    domain TEXT,
+    resolved_at TEXT NOT NULL
+);
+CREATE INDEX ix_translation_concepts_seed ON translation_concepts(seed_key);
+CREATE TABLE translations (
+    concept_id TEXT NOT NULL REFERENCES translation_concepts(concept_id) ON DELETE CASCADE,
+    language TEXT NOT NULL,
+    term TEXT NOT NULL,
+    term_key TEXT NOT NULL COLLATE NOCASE,
+    term_type TEXT NOT NULL,
+    priority INTEGER NOT NULL DEFAULT 50,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY(concept_id, language, term_key, term_type)
+);
+CREATE INDEX ix_translations_language ON translations(language, concept_id, priority DESC);
+CREATE TABLE api_gate (
+    name TEXT PRIMARY KEY,
+    next_at_ms INTEGER NOT NULL DEFAULT 0
+, adaptive_delay_ms INTEGER NOT NULL DEFAULT 0, last_throttle_at_ms INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE named_locks (
+    name TEXT PRIMARY KEY,
+    owner TEXT NOT NULL,
+    lease_until TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE TABLE events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+    run_id INTEGER REFERENCES runs(id) ON DELETE CASCADE,
+    stage TEXT,
+    level TEXT NOT NULL,
+    message TEXT NOT NULL,
+    details_json TEXT,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX ix_events_project_time ON events(project_id, id DESC);
+CREATE TABLE migration_sources (
+    source_path TEXT PRIMARY KEY,
+    imported_at TEXT NOT NULL,
+    stats_json TEXT
+);
+CREATE INDEX ix_media_normalized_title ON media(normalized_title);
+CREATE UNIQUE INDEX ux_media_page_id_identity ON media(page_id) WHERE page_id IS NOT NULL AND page_id>0;
+CREATE UNIQUE INDEX ux_media_sha1_identity ON media(sha1 COLLATE NOCASE) WHERE sha1 IS NOT NULL AND length(sha1)=40;
+CREATE TABLE migration_checkpoints (
+    source_root TEXT NOT NULL,
+    item_key TEXT NOT NULL,
+    line_number INTEGER NOT NULL DEFAULT 0,
+    completed INTEGER NOT NULL DEFAULT 0,
+    details_json TEXT,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY(source_root,item_key)
+);
+CREATE INDEX ix_migration_checkpoints_source ON migration_checkpoints(source_root,completed,item_key);
+CREATE INDEX ix_media_metadata_check ON media(metadata_checked_level,metadata_level,id);
+CREATE INDEX ix_media_page_id_lookup ON media(page_id);
+CREATE INDEX ix_search_tasks_lease ON search_tasks(project_id, status, lease_until);
+CREATE TABLE media_rejections (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    media_id INTEGER REFERENCES media(id) ON DELETE SET NULL,
+    page_id INTEGER,
+    sha1 TEXT COLLATE NOCASE,
+    normalized_title TEXT COLLATE NOCASE,
+    reason TEXT NOT NULL,
+    source TEXT NOT NULL DEFAULT 'manual-review-delete',
+    review_path TEXT,
+    rejected_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE UNIQUE INDEX ux_media_rejections_media ON media_rejections(media_id) WHERE media_id IS NOT NULL;
+CREATE UNIQUE INDEX ux_media_rejections_page ON media_rejections(page_id) WHERE page_id IS NOT NULL AND page_id>0;
+CREATE UNIQUE INDEX ux_media_rejections_sha1 ON media_rejections(sha1 COLLATE NOCASE) WHERE sha1 IS NOT NULL AND sha1<>'';
+CREATE UNIQUE INDEX ux_media_rejections_title ON media_rejections(normalized_title COLLATE NOCASE) WHERE normalized_title IS NOT NULL AND normalized_title<>'';
+CREATE TABLE review_exports (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    media_id INTEGER NOT NULL,
+    sequence_no INTEGER NOT NULL,
+    review_path TEXT NOT NULL COLLATE NOCASE,
+    source_path TEXT NOT NULL,
+    link_type TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'open',
+    exported_at TEXT NOT NULL,
+    last_seen_at TEXT,
+    rejected_at TEXT,
+    UNIQUE(project_id, media_id),
+    UNIQUE(project_id, sequence_no),
+    UNIQUE(review_path)
+);
+CREATE INDEX ix_review_exports_project_status ON review_exports(project_id,status,sequence_no);
+CREATE INDEX ix_review_exports_media ON review_exports(media_id,status);
+CREATE TABLE download_tuning (
+    project_id INTEGER PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+    run_id INTEGER REFERENCES runs(id) ON DELETE SET NULL,
+    enabled INTEGER NOT NULL DEFAULT 0,
+    current_delay_ms INTEGER NOT NULL DEFAULT 0,
+    direction INTEGER NOT NULL DEFAULT -1,
+    step_ms INTEGER NOT NULL DEFAULT 20,
+    window_target INTEGER NOT NULL DEFAULT 100,
+    window_successes INTEGER NOT NULL DEFAULT 0,
+    window_bytes INTEGER NOT NULL DEFAULT 0,
+    window_started_at_ms INTEGER NOT NULL DEFAULT 0,
+    previous_files_per_second REAL,
+    previous_bytes_per_second REAL,
+    best_delay_ms INTEGER,
+    best_files_per_second REAL,
+    best_bytes_per_second REAL,
+    hold_windows INTEGER NOT NULL DEFAULT 0,
+    total_429 INTEGER NOT NULL DEFAULT 0,
+    last_429_at_ms INTEGER NOT NULL DEFAULT 0,
+    last_429_at TEXT,
+    last_change_reason TEXT,
+    updated_at TEXT NOT NULL
+, run_start_terminal INTEGER NOT NULL DEFAULT 0, run_start_done INTEGER NOT NULL DEFAULT 0, run_start_reused INTEGER NOT NULL DEFAULT 0, run_started_at_ms INTEGER NOT NULL DEFAULT 0, last_window_delay_ms INTEGER, last_window_successes INTEGER NOT NULL DEFAULT 0, last_window_elapsed_ms INTEGER NOT NULL DEFAULT 0, last_window_files_per_second REAL, last_window_bytes_per_second REAL, last_window_at TEXT, last_decision_at TEXT, throttle_bursts INTEGER NOT NULL DEFAULT 0, burst_open INTEGER NOT NULL DEFAULT 0, cooldown_until_ms INTEGER NOT NULL DEFAULT 0, last_stable_delay_ms INTEGER);
+CREATE TABLE download_tuning_samples (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    run_id INTEGER REFERENCES runs(id) ON DELETE SET NULL,
+    sample_type TEXT NOT NULL,
+    delay_ms INTEGER NOT NULL,
+    next_delay_ms INTEGER NOT NULL,
+    direction INTEGER NOT NULL,
+    successes INTEGER NOT NULL DEFAULT 0,
+    bytes INTEGER NOT NULL DEFAULT 0,
+    elapsed_ms INTEGER NOT NULL DEFAULT 0,
+    files_per_second REAL,
+    bytes_per_second REAL,
+    status_code INTEGER,
+    note TEXT,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX ix_download_tuning_samples_project ON download_tuning_samples(project_id,id DESC);
+CREATE INDEX ix_project_downloads_updated ON project_downloads(project_id,updated_at,status);
+CREATE TABLE project_seed_state (
+    project_id INTEGER PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+    metadata_level INTEGER NOT NULL DEFAULT 0,
+    metadata_media_count INTEGER NOT NULL DEFAULT 0,
+    metadata_max_media_id INTEGER NOT NULL DEFAULT 0,
+    metadata_media_id_sum INTEGER NOT NULL DEFAULT 0,
+    metadata_project_updated_at TEXT,
+    metadata_verified_at TEXT,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX ix_metadata_tasks_level
+    ON metadata_tasks(project_id,required_level,media_id);
+CREATE INDEX ix_project_media_updated
+    ON project_media(project_id,updated_at DESC,media_id);
+CREATE INDEX ix_project_media_download_seed
+    ON project_media(project_id,score DESC,media_id)
+    WHERE selected=1 AND download_requested=0;
+CREATE INDEX ix_metadata_tasks_media_cover
+    ON metadata_tasks(project_id,media_id,required_level);
+CREATE INDEX ix_project_media_media_scan
+    ON project_media(project_id,media_id);
+CREATE INDEX ix_downloads_verified_sha1
+ON downloads(verified_sha1 COLLATE NOCASE, historical_complete, status, media_id)
+WHERE verified_sha1 IS NOT NULL AND verified_sha1<>'';
+CREATE INDEX ix_downloads_owner_worker_lease
+    ON downloads(owner_project_id,status,lease_owner,media_id)
+    WHERE status='running';
+CREATE INDEX ix_project_downloads_worker_lease
+    ON project_downloads(project_id,status,lease_owner,media_id)
+    WHERE status='running';
+CREATE INDEX ix_project_downloads_pending
+    ON project_downloads(project_id,media_id) WHERE status='pending';
+CREATE INDEX ix_project_downloads_failed_retry
+    ON project_downloads(project_id,attempts,media_id) WHERE status='failed';

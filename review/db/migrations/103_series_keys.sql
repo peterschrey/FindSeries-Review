@@ -21,5 +21,10 @@ CREATE INDEX IF NOT EXISTS ix_media_series_keys_primary
     ON media_series_keys(project_id, series_key, sequence_no, media_id)
     WHERE is_primary = 1;
 
+-- At most one primary series key per project/media.
+CREATE UNIQUE INDEX IF NOT EXISTS ux_media_series_keys_one_primary
+    ON media_series_keys(project_id, media_id)
+    WHERE is_primary = 1;
+
 INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES(103, datetime('now'));
 COMMIT;

@@ -7,9 +7,15 @@
 Sparse, **projektbezogen** (`project_id` + `media_id`):
 
 - Fehlende Zeile in `media_review_status` = **`unreviewed`** (Default für Altbestand, keine Massen-Vorfüllung).
-- Explizite Zeile mit `status='unreviewed'` erlaubt nach Rücksetzen (N), bleibt aber semantisch gleich.
+- Normale API-Semantik für Reset/`N`: History schreiben + **Current-Zeile löschen** (sparse bleiben).
+- Explizite `status='unreviewed'`-Zeilen sind schema-seitig erlaubt, aber nicht das bevorzugte Runtime-Modell.
 
 Statuswerte: `unreviewed` | `keep` | `reject` | `unsure`.
+
+**Scope:** projektbezogen, aber global über alle Filter/Gruppen dieses Projekts.  
+**Nicht** identisch mit workspaceweitem `media_rejections`.
+
+**Identity-Merge:** `Merge-FsMediaRows` remappt History/Status (falls Tabellen existieren) mit Priorität `keep > unsure > reject > unreviewed`.
 
 ## Tabellen
 

@@ -1,59 +1,27 @@
-# Similarity- / Embedding-Metadaten (FRV-9, P1)
+# Similarity-/Embedding-Metadaten (FRV-9, P1)
 
 **Bezug:** `MVP_SPEC.md` §10 – **blockiert P0 nicht**
 
 ## Prinzip
 
 - Keine Cloud-API
-- Modellversion zwingend an jedem Vektor
-- Modellwechsel ⇒ keine Vermischung: neuer `model_id`, alte Zeilen invalid oder separat
-- P0-Review funktioniert ohne diese Tabellen (leeren Zustand tolerieren)
+- Modellversion zwingend an jedem Vektor (`model_id`)
+- Modellwechsel ⇒ keine Vermischung
+- pHash mit Algorithmus/Version (`algorithm`), pending/error ohne Hash erlaubt
+- `ready` verlangt fertigen Hash bzw. Embedding
 
 ## Tabellen (Migration 104)
 
-### `media_embedding_models`
+### `media_embedding_models` / `media_embeddings`
 
-| Spalte | Bedeutung |
-|---|---|
-| model_id | PK, z. B. `clip-vit-b32-local-v1` |
-| dim | Vektordimension |
-| created_at | |
-| notes | |
-
-### `media_embeddings`
-
-| Spalte | Bedeutung |
-|---|---|
-| media_id | FK media |
-| model_id | FK models |
-| status | `pending`/`ready`/`error`/`stale` |
-| embedding | BLOB (float32 little-endian) oder ausgelagerter Pfad |
-| embedding_path | optional Dateipfad statt BLOB |
-| error | |
-| computed_at | |
-| source_sha1 | Invalidation wenn Datei/sha1 wechselt |
-| PRIMARY KEY (media_id, model_id) |
+PK `(media_id, model_id)`. CHECK: `status='ready'` ⇒ Embedding-BLOB oder Pfad gesetzt.
 
 ### `media_phash`
 
-| Spalte | Bedeutung |
-|---|---|
-| media_id | PK |
-| phash | TEXT/HEX |
-| status | |
-| computed_at | |
-| source_sha1 | |
+PK `(media_id, algorithm)`. `phash` nullable; CHECK: `ready` ⇒ phash nicht leer.
 
-### Optional später
-
-Vektorindex/ANN-Metadaten in eigener Version – erst nach Benchmark (FRV-41).
-
-## Invalidation / Recompute
-
-- `source_sha1` ≠ aktuelles `media.sha1` ⇒ `stale`
-- Modell entfernt/ersetzt ⇒ Queries filtern strikt `model_id = :active`
-- Batch-Job resumable über `status='pending'`
+Default-Algorithmus: `ahash64-v1`.
 
 ## Verifikation
 
-Schema + 100 Dummy-Zeilen zweier Modelle; Query nach model_id mischt nicht.
+`Test-Phase1ReviewModel.ps1`: ≥100 distinct media embeddings für model-a, model-b isoliert, pending ohne Hash ok, ready ohne Hash fail.

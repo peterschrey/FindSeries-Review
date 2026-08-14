@@ -10,70 +10,46 @@ Zusätzlich:
 
 | Facette | Quelle |
 |---|---|
-| Uploader | `media.current_uploader` / `original_uploader` (kein Discovery-Zwang) |
+| Uploader | `media.current_uploader` / `original_uploader` |
 | Kategorie-Knoten | `origin_category_id` → `categories` / `project_categories` |
-| Seed (abgeleitet) | `query_text` (Keyword-Familien) bzw. `parent_media_id` (Neighbor-Seed) |
+| Seed (abgeleitet) | siehe Seed-Semantik unten – **kein** erfundener `source_type` |
 
 ## Normalisierte Familie
 
-Hilfstabelle `review_provenance_type_map` (Migration 101):
+Hilfstabelle `review_provenance_type_map` (Migration 101) mappt bekannte `source_type` → `family`/`chip_label`.
 
-| source_type | family | chip_label |
-|---|---|---|
-| category | category | Category Search |
-| keyword | keyword | Keyword Search |
-| keyword-group | keyword | Keyword Search |
-| keyword-title | keyword | Keyword Search |
-| keyword-group-description | keyword | Keyword Search |
-| keyword-group-filename | keyword | Keyword Search |
-| depicts-search | keyword | Keyword Search |
-| neighbor | neighbor | Neighbor Search |
-| time-neighbour | neighbor | Neighbor Search |
-| uploader-neighbour | neighbor | Neighbor Search |
-| time-series | series | Serie |
-| filename-series | series | Serie |
-| filename | series | Serie |
+Unbekannte Typen: Familie **`unknown`** – nicht raten.
 
-Unbekannte künftige `source_type`: Familie `unknown` – **nicht raten**, in UI als „Unbekannt“ oder ausblenden.
+## Seed-Semantik (verbindlich)
 
-## Seed-Ableitung (ohne erfundenen source_type)
+| Fall | Bedingung | seed_kind | seed_key |
+|---|---|---|---|
+| Neighbor-Familie | `family='neighbor'` und `parent_media_id` vorhanden | `media` | `media:<parent_media_id>` |
+| Keyword/Search | `family='keyword'` (o.ä. Suchpfad) und belastbares `query_text` | `query` | normalisierte Query (`lower(trim(query_text))`) |
+| sonst | nicht belastbar | — | **NULL** (Seed nicht anzeigen) |
 
-```text
-seed_key =
-  CASE
-    WHEN query_text NOT NULL AND trim(query_text)<>'' THEN lower(trim(query_text))
-    WHEN parent_media_id NOT NULL THEN 'parent:' || parent_media_id
-    ELSE NULL
-  END
-```
+**Nicht:** generisch zuerst `query_text`, dann `parent_media_id` über alle Familien.
 
-Wenn `seed_key` NULL → Seed-Facette für dieses Medium nicht anzeigen.
-
-## Effektive Herkunft je Medium (Skizze)
+SQL-Skizze:
 
 ```sql
-SELECT DISTINCT d.media_id, m.family, m.chip_label
-FROM discoveries d
-JOIN review_provenance_type_map m ON m.source_type = d.source_type
-WHERE d.project_id = :project_id;
+CASE
+  WHEN m.family = 'neighbor' AND d.parent_media_id IS NOT NULL
+    THEN 'media:' || d.parent_media_id
+  WHEN m.family = 'keyword' AND d.query_text IS NOT NULL AND trim(d.query_text) <> ''
+    THEN lower(trim(d.query_text))
+  ELSE NULL
+END AS seed_key
 ```
-
-Mehrfachherkunft = mehrere Familien pro `media_id`.
 
 ## Indizes (Migration 101)
 
-- `ix_discoveries_project_source_media (project_id, source_type, media_id)`
-- `ix_discoveries_project_origin_cat (project_id, origin_category_id, media_id)` WHERE origin_category_id IS NOT NULL
-- `ix_discoveries_project_parent (project_id, parent_media_id, media_id)` WHERE parent_media_id IS NOT NULL
-- `ix_media_current_uploader (current_uploader)` WHERE current_uploader IS NOT NULL AND current_uploader<>''
-
-## Lücken
-
-1. Kein natives `source_type='seed'` → Seed nur abgeleitet.
-2. Cat_Dentistry-Projekte oft nur `category` → Keyword/Neighbor-Chips fehlen dort erwartbar.
-3. `uploader-neighbour` ist Neighbor-Familie, nicht Uploader-Attribut.
-4. Detail-Labels (`source_value`) können sehr kardinal sein – Gruppen nach Familie zuerst, Drilldown nach Value optional.
+- `ix_discoveries_project_source_media`
+- `ix_discoveries_project_origin_cat` (partial)
+- `ix_discoveries_project_parent` (partial)
+- `ix_media_current_uploader` (partial)
 
 ## Verifikation
 
-≥50 Medien mit nachvollziehbarer Provenienz (Skript `Test-ProvenanceSample.ps1`).
+- Synthetisch: `Test-Phase1ReviewModel.ps1`
+- Real read-only: `Test-ProvenanceSample.ps1` (≥50 reale Medien)

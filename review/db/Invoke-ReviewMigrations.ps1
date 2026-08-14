@@ -4,6 +4,7 @@ param(
     [Parameter(Mandatory=$true)][string]$DatabasePath,
     [string]$SqlitePath,
     [string]$MigrationsDir,
+    [string]$BackupPath,
     [switch]$Backup,
     [switch]$SkipIntegrity
 )
@@ -23,65 +24,93 @@ $files=@(
     '104_similarity_meta.sql'
 )
 
-function Get-CoreCounts([string]$Db){
-    & $SqlitePath $Db @"
+function Invoke-SqliteChecked {
+    param([string]$Database,[Parameter(ValueFromRemainingArguments=$true)][string[]]$SqlArgs)
+    $out = & $SqlitePath $Database @SqlArgs 2>&1
+    if($LASTEXITCODE -ne 0){
+        throw ("sqlite failed (exit {0}) on {1}: {2}" -f $LASTEXITCODE,$Database,($out -join ' '))
+    }
+    return $out
+}
+
+function Get-CoreCounts([string]$Database){
+    (Invoke-SqliteChecked $Database @"
 SELECT
  (SELECT COUNT(*) FROM projects),
  (SELECT COUNT(*) FROM media),
  (SELECT COUNT(*) FROM project_media),
  (SELECT COUNT(*) FROM discoveries),
  (SELECT COUNT(*) FROM categories),
- (SELECT COUNT(*) FROM project_categories);
-"@
+ (SELECT COUNT(*) FROM project_categories),
+ (SELECT COUNT(*) FROM downloads);
+"@) -join ''
+}
+
+function New-FsSqliteBackup {
+    param([string]$SourceDb,[string]$DestDb)
+    $destDir = Split-Path -Parent $DestDb
+    if($destDir -and -not(Test-Path -LiteralPath $destDir)){
+        New-Item -ItemType Directory -Path $destDir -Force | Out-Null
+    }
+    if(Test-Path -LiteralPath $DestDb){Remove-Item -LiteralPath $DestDb -Force}
+    # Consistent online backup; do NOT copy -wal/-shm manually.
+    # On Windows, paths like C:/... must not be the optional DB token — use explicit `main`.
+    $destUnix = $DestDb.Replace('\','/')
+    $null = Invoke-SqliteChecked $SourceDb ".backup main `"$destUnix`""
+    $qc = (Invoke-SqliteChecked $DestDb 'PRAGMA quick_check;') -join ''
+    if($qc.Trim() -ne 'ok'){throw "backup quick_check failed: $qc"}
+    return (Resolve-Path -LiteralPath $DestDb).Path
 }
 
 Write-Host "Database: $DatabasePath" -ForegroundColor Cyan
 if($Backup){
     $stamp=Get-Date -Format 'yyyyMMdd-HHmmss'
-    $bak="$DatabasePath.pre-review-mig-$stamp.bak"
-    Copy-Item -LiteralPath $DatabasePath -Destination $bak -Force
-    foreach($s in @('-wal','-shm')){
-        $side=$DatabasePath+$s
-        if(Test-Path -LiteralPath $side){Copy-Item -LiteralPath $side -Destination ($bak+$s) -Force}
+    if([string]::IsNullOrWhiteSpace($BackupPath)){
+        $BackupPath = "$DatabasePath.pre-review-mig-$stamp.sqlitebackup"
     }
-    Write-Host "Backup: $bak" -ForegroundColor DarkGray
+    $bak = New-FsSqliteBackup -SourceDb $DatabasePath -DestDb $BackupPath
+    Write-Host "SQLite .backup created: $bak" -ForegroundColor DarkGray
 }
 
 $before=Get-CoreCounts $DatabasePath
 Write-Host "Counts before: $before"
 if(-not $SkipIntegrity){
-    $qc=& $SqlitePath $DatabasePath 'PRAGMA quick_check;'
-    if($qc -ne 'ok'){throw "quick_check failed before migration: $qc"}
+    $qc=(Invoke-SqliteChecked $DatabasePath 'PRAGMA quick_check;') -join ''
+    if($qc.Trim() -ne 'ok'){throw "quick_check failed before migration: $qc"}
 }
 
+$timings = New-Object Collections.Generic.List[string]
 foreach($f in $files){
     $path=Join-Path $MigrationsDir $f
     if(-not(Test-Path -LiteralPath $path)){throw "missing migration: $path"}
     Write-Host "Apply $f ..." -ForegroundColor Gray
-    & $SqlitePath $DatabasePath ".read `"$($path.Replace('\','/'))`""
-    if($LASTEXITCODE -ne 0){throw "migration failed: $f"}
+    $sw=[Diagnostics.Stopwatch]::StartNew()
+    $null = Invoke-SqliteChecked $DatabasePath ".read `"$($path.Replace('\','/'))`""
+    $sw.Stop()
+    $timings.Add(("{0}={1}ms" -f $f,$sw.ElapsedMilliseconds))
 }
 
 $after=Get-CoreCounts $DatabasePath
 Write-Host "Counts after: $after"
 if($before -cne $after){throw "core counts changed: $before -> $after"}
 
-$applied=& $SqlitePath $DatabasePath "SELECT version FROM schema_migrations WHERE version IN (100,101,102,103,104) ORDER BY version;"
-$appliedList=@($applied)
+$applied=@(Invoke-SqliteChecked $DatabasePath "SELECT version FROM schema_migrations WHERE version IN (100,101,102,103,104) ORDER BY version;")
 foreach($v in $versions){
-    if($appliedList -notcontains [string]$v){throw "missing schema_migrations version $v"}
+    if($applied -notcontains [string]$v){throw "missing schema_migrations version $v"}
 }
 if(-not $SkipIntegrity){
-    $qc2=& $SqlitePath $DatabasePath 'PRAGMA quick_check;'
-    if($qc2 -ne 'ok'){throw "quick_check failed after migration: $qc2"}
+    $qc2=(Invoke-SqliteChecked $DatabasePath 'PRAGMA quick_check;') -join ''
+    if($qc2.Trim() -ne 'ok'){throw "quick_check failed after migration: $qc2"}
 }
-Write-Host "Migration OK. Versions:`n$($appliedList -join ', ')" -ForegroundColor Green
+Write-Host ("Migration timings: {0}" -f ($timings -join '; ')) -ForegroundColor DarkGray
+Write-Host "Migration OK. Versions:`n$($applied -join ', ')" -ForegroundColor Green
 
 <#
-Rollback scenario (documented, not auto-executed):
-1. Stop review-api / writers.
-2. Restore $DatabasePath from the .bak (+ wal/shm if present) created with -Backup.
-3. Or: DROP review_* / media_review_* / media_series_keys / media_embedding* / media_phash / project_category_closure
-   and DELETE FROM schema_migrations WHERE version BETWEEN 100 AND 104;
-   Prefer full file restore for safety.
+Rollback (supported):
+1. Stop writers.
+2. Restore from the SQLite .backup file created with -Backup (copy backup over target DB;
+   remove stale -wal/-shm of the target if present).
+3. Prefer backup-restore over SQL DROP scripts.
+
+SQL rollback file ROLLBACK_100_104.sql is best-effort only and warns before destructive drops.
 #>

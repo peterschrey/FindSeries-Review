@@ -6,33 +6,29 @@ param(
     [string]$MigrationPath
 )
 $ErrorActionPreference = 'Stop'
-$root = Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent
-if (-not $root -or -not (Test-Path (Join-Path $root 'Tools\sqlite3.exe'))) {
-    $root = Resolve-Path (Join-Path $PSScriptRoot '..\..\..')
-}
+$root = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
 if (-not $SqlitePath) { $SqlitePath = Join-Path $root 'Tools\sqlite3.exe' }
 if (-not $MigrationPath) { $MigrationPath = Join-Path $root 'review\db\migrations\100_review_status.sql' }
 
+# Always rebuild a portable fixture DB (no hardcoded user paths).
+& (Join-Path $PSScriptRoot 'New-Phase1TestDatabase.ps1') -DatabasePath $DatabasePath -SqlitePath $SqlitePath -RepoRoot $root
+
 function Invoke-Sql([string]$Db, [string]$Sql) {
-    & $SqlitePath $Db $Sql
-    if ($LASTEXITCODE -ne 0) { throw "sqlite failed: $Sql" }
+    $out = & $SqlitePath $Db $Sql 2>&1
+    if ($LASTEXITCODE -ne 0) { throw "sqlite failed: $Sql :: $out" }
+    return $out
 }
 
 Write-Host "DB: $DatabasePath" -ForegroundColor Cyan
-$before = & $SqlitePath $DatabasePath "SELECT (SELECT COUNT(*) FROM projects),(SELECT COUNT(*) FROM media),(SELECT COUNT(*) FROM project_media),(SELECT COUNT(*) FROM schema_migrations);"
+$before = Invoke-Sql $DatabasePath "SELECT (SELECT COUNT(*) FROM projects),(SELECT COUNT(*) FROM media),(SELECT COUNT(*) FROM project_media),(SELECT COUNT(*) FROM schema_migrations);"
 Write-Host "before counts: $before"
 
-$mig = (Get-Content -LiteralPath $MigrationPath -Raw)
-# apply twice for idempotency
+# Apply only migration 100 twice for FRV-5 idempotency
 1..2 | ForEach-Object {
-    $tmp = Join-Path $env:TEMP ("fs-mig-100-" + [guid]::NewGuid().ToString('N') + '.sql')
-    Set-Content -LiteralPath $tmp -Value $mig -Encoding utf8
-    & $SqlitePath $DatabasePath ".read `"$($tmp.Replace('\','/'))`""
-    if ($LASTEXITCODE -ne 0) { throw "migration apply failed (pass $_)" }
-    Remove-Item $tmp -Force -ErrorAction SilentlyContinue
+    $null = Invoke-Sql $DatabasePath ".read `"$($MigrationPath.Replace('\','/'))`""
 }
 
-$after = & $SqlitePath $DatabasePath "SELECT (SELECT COUNT(*) FROM projects),(SELECT COUNT(*) FROM media),(SELECT COUNT(*) FROM project_media),(SELECT COUNT(*) FROM schema_migrations WHERE version=100);"
+$after = Invoke-Sql $DatabasePath "SELECT (SELECT COUNT(*) FROM projects),(SELECT COUNT(*) FROM media),(SELECT COUNT(*) FROM project_media),(SELECT COUNT(*) FROM schema_migrations WHERE version=100);"
 Write-Host "after counts: $after"
 $beforeCore = (($before -split '\|')[0..2] -join '|')
 $afterCore = (($after -split '\|')[0..2] -join '|')
@@ -41,7 +37,6 @@ if ($beforeCore -cne $afterCore) {
 }
 if (($after -split '\|')[3] -ne '1') { throw 'schema_migrations version 100 missing' }
 
-# set / reset status with protect_keep semantics simulation
 $batch = [guid]::NewGuid().ToString('N')
 Invoke-Sql $DatabasePath @"
 BEGIN IMMEDIATE;
@@ -56,32 +51,34 @@ INSERT INTO media_review_status(project_id,media_id,status,changed_at,source,act
 VALUES(7,2,'reject',datetime('now'),'test','bulk-reject','$batch'),
       (7,3,'reject',datetime('now'),'test','bulk-reject','$batch');
 COMMIT;
-"@
+"@ | Out-Null
 
-$states = & $SqlitePath $DatabasePath @"
+$states = Invoke-Sql $DatabasePath @"
 SELECT pm.media_id, COALESCE(mrs.status,'unreviewed')
 FROM project_media pm
 LEFT JOIN media_review_status mrs ON mrs.project_id=pm.project_id AND mrs.media_id=pm.media_id
-WHERE pm.project_id=7 ORDER BY pm.media_id;
+WHERE pm.project_id=7 ORDER BY pm.media_id LIMIT 10;
 "@
 Write-Host "states:`n$states"
-$hist = & $SqlitePath $DatabasePath "SELECT COUNT(*) FROM media_review_history WHERE batch_id='$batch';"
-if ($hist -ne '2') { throw "expected 2 history rows, got $hist" }
+$hist = Invoke-Sql $DatabasePath "SELECT COUNT(*) FROM media_review_history WHERE batch_id='$batch';"
+if (($hist | Select-Object -Last 1) -ne '2') { throw "expected 2 history rows, got $hist" }
 
-# reset media 2 to unreviewed
+# Preferred sparse reset: history + DELETE current row
 Invoke-Sql $DatabasePath @"
 BEGIN;
 INSERT INTO media_review_history(project_id,media_id,old_status,new_status,changed_at,source,action)
 VALUES(7,2,'reject','unreviewed',datetime('now'),'test','hotkey-N');
-UPDATE media_review_status SET status='unreviewed', changed_at=datetime('now'), action='hotkey-N', batch_id=NULL
-WHERE project_id=7 AND media_id=2;
+DELETE FROM media_review_status WHERE project_id=7 AND media_id=2;
 COMMIT;
-"@
+"@ | Out-Null
 
-$check = & $SqlitePath $DatabasePath "PRAGMA quick_check;"
-$wal = & $SqlitePath $DatabasePath "PRAGMA journal_mode;"
-$idx = & $SqlitePath $DatabasePath "SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'ix_media_review%' ORDER BY name;"
+$sparse = Invoke-Sql $DatabasePath "SELECT COALESCE((SELECT status FROM media_review_status WHERE project_id=7 AND media_id=2),'unreviewed');"
+if (($sparse | Select-Object -Last 1) -ne 'unreviewed') { throw "sparse reset failed: $sparse" }
+
+$check = Invoke-Sql $DatabasePath "PRAGMA quick_check;"
+$wal = Invoke-Sql $DatabasePath "PRAGMA journal_mode;"
+$idx = Invoke-Sql $DatabasePath "SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'ix_media_review%' ORDER BY name;"
 Write-Host "quick_check=$check journal=$wal"
 Write-Host "indexes:`n$idx"
-if ($check -ne 'ok') { throw "quick_check failed" }
+if (($check | Select-Object -Last 1) -ne 'ok') { throw "quick_check failed" }
 Write-Host "PASS FRV-5 migration verification" -ForegroundColor Green

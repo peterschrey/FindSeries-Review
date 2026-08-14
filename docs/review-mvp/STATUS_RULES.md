@@ -5,7 +5,13 @@
 
 ## Statusmodell
 
-Jedes Medium hat im Review **genau einen** Status (projektbezogen/global):
+Jedes Medium hat im Review **genau einen projektbezogenen Status**:
+
+> `media_review_status` = Reviewstatus **pro Projekt**, aber **global über alle Filter/Gruppen/Cluster dieses Projekts**.
+
+Das ist **nicht** workspaceweit. Die workspaceweite harte Ausschlussliste bleibt `media_rejections` (Explorer-Pfad).
+
+Ein normales Setzen von Reviewstatus `reject` erzeugt **keine** `media_rejections`-Zeile. Überführung erst im späteren Finalisierungstask.
 
 | Code (intern) | Anzeige | Bedeutung |
 |---|---|---|
@@ -14,7 +20,19 @@ Jedes Medium hat im Review **genau einen** Status (projektbezogen/global):
 | `reject` | Löschen | Für spätere Finalisierung vorgesehen |
 | `unsure` | Unsicher | Offen halten, bleibt im Default-Filter |
 
-Default für Altbestand ohne Review-Zeile: **`unreviewed`**.
+**Sparse-Default:** keine Current-Zeile = `unreviewed` (keine Massen-Vorfüllung).
+
+## Zeitformat (kanonisch für Review-Tabellen)
+
+Alle Review-Timestamps als UTC RFC3339 mit Millisekunden:
+
+```text
+YYYY-MM-DDTHH:mm:ss.fffZ
+```
+
+Beispiel: `2026-08-14T12:00:00.000Z`
+
+Backend-Writes sollen dieselbe Formatter-Funktion verwenden (nicht mischen mit lokalen/ variablen Fractional-Digit-Formaten). Vorhandenes `Get-FsUtcNowText` (ISO-8601 `o`) ist UTC-kompatibel; Review-API soll auf die feste `.fffZ`-Konvention normalisieren.
 
 ## Default-Filter in der UI
 
@@ -37,8 +55,11 @@ unreviewed ↔ keep ↔ reject ↔ unsure
 ```
 
 - `N` setzt zurück auf `unreviewed`.
+- **API-Semantik (vormerken für Backend):** Hotkey N / Reset → History schreiben, danach **Current-Zeile löschen** (sparse), nicht dauerhaft Millionen `unreviewed`-Rows speichern.
+- Schema darf `status='unreviewed'` weiterhin akzeptieren (Migration/Kompatibilität); normale API soll DELETE der Current-Zeile nutzen.
 - Keine Bestätigungsdialoge pro Aktion.
 - Jede Änderung schreibt Historie (alter Status, neuer Status, Zeit, Quelle/Aktion, batch_id).
+- **Undo-Hinweis:** Undo eines alten Batch darf einen zwischenzeitlich geschützten Current-Status nicht überschreiben. Current `batch_id` ist maßgeblich.
 
 ## Schutz von Behalten bei Massenaktionen
 

@@ -10,7 +10,7 @@ Stand: 2026-08-14, Codebasis `5.0.14-hotfix66`, Produktiv-DB nur read-only analy
 |---|---|
 | Code (dieses Repo) | `FindSeries-Review` → GitHub `peterschrey/FindSeries-Review` |
 | Produktiv-Workspace | `E:\Temp\FindSeriesV5-Workspace` |
-| Produktiv-DB | `E:\Temp\FindSeriesV5-Workspace\findseries-v5.db` (~20 GB, WAL) |
+| Produktiv-DB | `C:\FindSeriesV5-Workspace\findseries-v5.db` (~19–20 GB, WAL; **nicht** schreiben/migrieren) |
 | Medien | `Workspace\Media\` (Hash-Store), Review-Hardlinks unter `Workspace\Review\<slug>\` |
 | Config | `Config/local.json` → Workspace-Pfad; Profile in `Config/profiles.json` |
 

@@ -517,6 +517,120 @@ function Normalize-FsDatabaseTitleIdentity {
     return $value
 }
 
+function Test-FsSqliteTableExists {
+    param(
+        [Parameter(Mandatory = $true)][string]$SqlitePath,
+        [Parameter(Mandatory = $true)][string]$DatabasePath,
+        [Parameter(Mandatory = $true)][string]$TableName
+    )
+    $safe = ConvertTo-FsSqlLiteral $TableName
+    $rows = @(Invoke-FsSqlite -SqlitePath $SqlitePath -DatabasePath $DatabasePath -Query -Sql "SELECT 1 AS ok FROM sqlite_master WHERE type='table' AND name=$safe LIMIT 1;")
+    return ($rows.Count -gt 0)
+}
+
+function Get-FsReviewMergeSql {
+    <#
+      Remaps Review-MVP tables during identity merge when present.
+      No-op (empty string) on DBs without review migrations.
+      Status conflict priority (safety wins): keep > unsure > reject > unreviewed
+      Undo note: later undo must not overwrite a protected current status whose
+      batch_id differs from the undone batch (current batch_id is authoritative).
+    #>
+    param(
+        [Parameter(Mandatory = $true)][string]$SqlitePath,
+        [Parameter(Mandatory = $true)][string]$DatabasePath,
+        [Parameter(Mandatory = $true)][int]$SurvivorId,
+        [Parameter(Mandatory = $true)][int]$DuplicateId,
+        [Parameter(Mandatory = $true)][string]$NowSql
+    )
+    $parts = New-Object Collections.Generic.List[string]
+
+    if (Test-FsSqliteTableExists -SqlitePath $SqlitePath -DatabasePath $DatabasePath -TableName 'media_review_history') {
+        [void]$parts.Add(@"
+-- Review history must never be silently dropped on media merge.
+UPDATE media_review_history SET media_id=$SurvivorId WHERE media_id=$DuplicateId;
+"@)
+    }
+
+    if (Test-FsSqliteTableExists -SqlitePath $SqlitePath -DatabasePath $DatabasePath -TableName 'media_review_status') {
+        [void]$parts.Add(@"
+-- Project-scoped current review status: transfer/merge with safety priority.
+-- Priority: keep(4) > unsure(3) > reject(2) > unreviewed(1)
+INSERT INTO media_review_status(project_id,media_id,status,changed_at,changed_by,source,action,batch_id)
+SELECT project_id,$SurvivorId,status,changed_at,changed_by,source,action,batch_id
+FROM media_review_status WHERE media_id=$DuplicateId
+ON CONFLICT(project_id,media_id) DO UPDATE SET
+ status=CASE
+   WHEN CASE excluded.status WHEN 'keep' THEN 4 WHEN 'unsure' THEN 3 WHEN 'reject' THEN 2 WHEN 'unreviewed' THEN 1 ELSE 0 END
+      > CASE media_review_status.status WHEN 'keep' THEN 4 WHEN 'unsure' THEN 3 WHEN 'reject' THEN 2 WHEN 'unreviewed' THEN 1 ELSE 0 END
+   THEN excluded.status ELSE media_review_status.status END,
+ changed_at=CASE
+   WHEN CASE excluded.status WHEN 'keep' THEN 4 WHEN 'unsure' THEN 3 WHEN 'reject' THEN 2 WHEN 'unreviewed' THEN 1 ELSE 0 END
+      > CASE media_review_status.status WHEN 'keep' THEN 4 WHEN 'unsure' THEN 3 WHEN 'reject' THEN 2 WHEN 'unreviewed' THEN 1 ELSE 0 END
+   THEN excluded.changed_at
+   WHEN CASE excluded.status WHEN 'keep' THEN 4 WHEN 'unsure' THEN 3 WHEN 'reject' THEN 2 WHEN 'unreviewed' THEN 1 ELSE 0 END
+      < CASE media_review_status.status WHEN 'keep' THEN 4 WHEN 'unsure' THEN 3 WHEN 'reject' THEN 2 WHEN 'unreviewed' THEN 1 ELSE 0 END
+   THEN media_review_status.changed_at
+   ELSE MAX(media_review_status.changed_at,excluded.changed_at) END,
+ changed_by=CASE
+   WHEN CASE excluded.status WHEN 'keep' THEN 4 WHEN 'unsure' THEN 3 WHEN 'reject' THEN 2 WHEN 'unreviewed' THEN 1 ELSE 0 END
+      > CASE media_review_status.status WHEN 'keep' THEN 4 WHEN 'unsure' THEN 3 WHEN 'reject' THEN 2 WHEN 'unreviewed' THEN 1 ELSE 0 END
+   THEN excluded.changed_by ELSE media_review_status.changed_by END,
+ source=CASE
+   WHEN CASE excluded.status WHEN 'keep' THEN 4 WHEN 'unsure' THEN 3 WHEN 'reject' THEN 2 WHEN 'unreviewed' THEN 1 ELSE 0 END
+      > CASE media_review_status.status WHEN 'keep' THEN 4 WHEN 'unsure' THEN 3 WHEN 'reject' THEN 2 WHEN 'unreviewed' THEN 1 ELSE 0 END
+   THEN excluded.source ELSE media_review_status.source END,
+ action=CASE
+   WHEN CASE excluded.status WHEN 'keep' THEN 4 WHEN 'unsure' THEN 3 WHEN 'reject' THEN 2 WHEN 'unreviewed' THEN 1 ELSE 0 END
+      > CASE media_review_status.status WHEN 'keep' THEN 4 WHEN 'unsure' THEN 3 WHEN 'reject' THEN 2 WHEN 'unreviewed' THEN 1 ELSE 0 END
+   THEN excluded.action ELSE media_review_status.action END,
+ batch_id=CASE
+   WHEN CASE excluded.status WHEN 'keep' THEN 4 WHEN 'unsure' THEN 3 WHEN 'reject' THEN 2 WHEN 'unreviewed' THEN 1 ELSE 0 END
+      > CASE media_review_status.status WHEN 'keep' THEN 4 WHEN 'unsure' THEN 3 WHEN 'reject' THEN 2 WHEN 'unreviewed' THEN 1 ELSE 0 END
+   THEN excluded.batch_id ELSE media_review_status.batch_id END;
+DELETE FROM media_review_status WHERE media_id=$DuplicateId;
+"@)
+    }
+
+    if (Test-FsSqliteTableExists -SqlitePath $SqlitePath -DatabasePath $DatabasePath -TableName 'media_series_keys') {
+        [void]$parts.Add(@"
+INSERT INTO media_series_keys(project_id,media_id,strategy,series_key,sequence_no,sequence_label,is_primary,built_at)
+SELECT project_id,$SurvivorId,strategy,series_key,sequence_no,sequence_label,
+ CASE
+   WHEN is_primary=1 AND EXISTS(
+     SELECT 1 FROM media_series_keys s
+     WHERE s.project_id=media_series_keys.project_id AND s.media_id=$SurvivorId AND s.is_primary=1
+   ) THEN 0 ELSE is_primary END,
+ built_at
+FROM media_series_keys WHERE media_id=$DuplicateId
+ON CONFLICT(project_id,media_id,strategy,series_key) DO UPDATE SET
+ sequence_no=MIN(media_series_keys.sequence_no,excluded.sequence_no);
+DELETE FROM media_series_keys WHERE media_id=$DuplicateId;
+"@)
+    }
+
+    if (Test-FsSqliteTableExists -SqlitePath $SqlitePath -DatabasePath $DatabasePath -TableName 'media_embeddings') {
+        [void]$parts.Add(@"
+INSERT OR IGNORE INTO media_embeddings(media_id,model_id,status,embedding,embedding_path,error,computed_at,source_sha1)
+SELECT $SurvivorId,model_id,status,embedding,embedding_path,error,computed_at,source_sha1
+FROM media_embeddings WHERE media_id=$DuplicateId;
+DELETE FROM media_embeddings WHERE media_id=$DuplicateId;
+"@)
+    }
+
+    if (Test-FsSqliteTableExists -SqlitePath $SqlitePath -DatabasePath $DatabasePath -TableName 'media_phash') {
+        [void]$parts.Add(@"
+INSERT OR IGNORE INTO media_phash(media_id,algorithm,phash,status,computed_at,source_sha1)
+SELECT $SurvivorId,algorithm,phash,status,computed_at,source_sha1
+FROM media_phash WHERE media_id=$DuplicateId;
+DELETE FROM media_phash WHERE media_id=$DuplicateId;
+"@)
+    }
+
+    if ($parts.Count -eq 0) { return '' }
+    return ($parts -join "`n")
+}
+
 function Merge-FsMediaRows {
     [CmdletBinding()]
     param(
@@ -676,6 +790,8 @@ SET status='superseded',rejected_at=COALESCE(rejected_at,$(ConvertTo-FsSqlLitera
 WHERE media_id=$DuplicateId
   AND EXISTS(SELECT 1 FROM review_exports x WHERE x.project_id=review_exports.project_id AND x.media_id=$SurvivorId);
 UPDATE review_exports SET media_id=$SurvivorId WHERE media_id=$DuplicateId AND status<>'superseded';
+
+$(Get-FsReviewMergeSql -SurvivorId $SurvivorId -DuplicateId $DuplicateId -NowSql (ConvertTo-FsSqlLiteral $now) -SqlitePath $SqlitePath -DatabasePath $DatabasePath)
 
 -- A rejection may only become provable after metadata reveals a shared SHA-1.
 -- Re-apply the global exclusion after the merge so an alias discovered through

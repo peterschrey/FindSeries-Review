@@ -20,7 +20,7 @@ Die UX-Begriffe aus der Spec werden auf reale `source_type`-Werte gemappt:
 | **Neighbor Search** | `neighbor`, `time-neighbour`, `uploader-neighbour` | `parent_media_id` bzw. Uploader/Zeitfenster in `source_value` |
 | **Serie** (Gruppe/Sort) | `time-series`, `filename-series`, `filename` + Medienfelder | Kein eigener Chip „Serie“ als Discovery-Herkunftspflicht; Gruppierungsmodus |
 | **Uploader** (Gruppe) | `media.current_uploader` / `original_uploader` + `uploader-neighbour` | Uploader ist primär Medienattribut |
-| **Seed** (Gruppe/Filter) | *kein* gleichnamiger `source_type` | Ableitung: `query_text` / Search-Seed / Neighbor-Seed-Medium – siehe Datenlücke |
+| **Seed** (Gruppe/Filter) | *kein* gleichnamiger `source_type` | Neighbor: `media:<parent_media_id>`; Keyword: normalisierte `query_text`; sonst NULL |
 
 Chip-Farben (Vorschlag, konsistent in UI): Category=blau, Keyword=violett, Neighbor=orange, Uploader=teal, Seed=grau (sobald ableitbar).
 
@@ -60,12 +60,13 @@ Projekt-Hinweis:
 
 ## Datenlücke: „Seed Search“
 
-In `discoveries` existiert **kein** `source_type='seed'`.  
-„Seed“ in der Spec meint fachlich Such-Seeds / Neighbor-Seeds. Umsetzung in FRV-6:
+In `discoveries` existiert **kein** `source_type='seed'`. Verbindliche Ableitung:
 
-1. bevorzugte Ableitung aus `query_text` / Search-Task-Seed,
-2. alternativ Neighbor-Seed über `parent_media_id`,
-3. wenn nicht belastbar: Facette „Seed“ als **nicht belegbar** markieren, nicht erfinden.
+1. Neighbor-Familie + `parent_media_id` → `seed_kind=media`, `seed_key=media:<id>`
+2. Keyword-Familie + belastbares `query_text` → `seed_kind=query`
+3. sonst kein Seed (nicht erfinden)
+
+Details: `PROVENANCE_MODEL.md`.
 
 ## Verifikation – 10 Beispielmedien (Projekt 9, read-only)
 
