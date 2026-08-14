@@ -55,4 +55,4 @@ Frontend vitest + typecheck/build; Backend inkl. thumbs + bestehende FRV-11–16
 
 ## 10. SHA
 
-nach Push
+`a7e667ac03e04784f5200014065b0fdc615f6694`
