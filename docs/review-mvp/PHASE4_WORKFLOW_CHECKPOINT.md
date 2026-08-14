@@ -27,7 +27,7 @@
 
 ## 3–8. Kurz
 
-Siehe Report nach Push.
+Siehe Report `998e89fb154dc1b0040b169fdfa9200b015f5730`.
 
 ## 9. Redo
 
@@ -35,4 +35,4 @@ Redo bewusst **nicht** implementiert: Batch-Undo ist history-id-basiert; sichere
 
 ## 10. SHA
 
-nach Push
+`998e89fb154dc1b0040b169fdfa9200b015f5730`
