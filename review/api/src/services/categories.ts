@@ -63,7 +63,6 @@ export function listCategoryNodes(db: ReviewDb, q: CategoryNodeQuery): CategoryN
         categoryIds: [r.category_id],
         uploader: q.filter.uploader,
         seriesKey: q.filter.seriesKey,
-        seriesStrategy: q.filter.seriesStrategy,
         seedKey: q.filter.seedKey,
         parentMediaId: q.filter.parentMediaId,
         mediaIds: q.filter.mediaIds,
@@ -119,14 +118,20 @@ export function queryFacets(db: ReviewDb, filter: MediaFilter): FacetsResponse {
   const uploaders = db
     .prepare(
       `WITH fm AS (${base.sql})
-       SELECT COALESCE(NULLIF(uploader,''), '(ohne Uploader)') AS uploader,
+       SELECT CASE
+                WHEN uploader IS NULL OR uploader = '' THEN NULL
+                ELSE uploader
+              END AS uploader,
               COUNT(*) AS count
        FROM fm
-       GROUP BY uploader
+       GROUP BY CASE
+                  WHEN uploader IS NULL OR uploader = '' THEN NULL
+                  ELSE uploader
+                END
        ORDER BY count DESC
        LIMIT 100`,
     )
-    .all(...base.params) as Array<{ uploader: string; count: number }>;
+    .all(...base.params) as Array<{ uploader: string | null; count: number }>;
 
   return {
     provenance: provenance.map((p) => ({

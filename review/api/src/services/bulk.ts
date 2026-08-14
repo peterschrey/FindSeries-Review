@@ -9,11 +9,10 @@ import type {
 } from '@findseries/review-shared';
 import type { ReviewDb } from '../db.js';
 import { utcNow } from '../db.js';
-import { buildFilteredMediaCte } from '../sql/filters.js';
+import { buildFilteredMediaCte, resolveStatuses } from '../sql/filters.js';
 
 function resolveTargetIds(db: ReviewDb, req: BulkRequest): number[] {
   if (req.mediaIds?.length) {
-    // Restrict to project membership
     const placeholders = req.mediaIds.map(() => '?').join(',');
     const rows = db
       .prepare(
@@ -25,18 +24,18 @@ function resolveTargetIds(db: ReviewDb, req: BulkRequest): number[] {
   }
   const filter: MediaFilter = {
     projectId: req.projectId,
-    statuses: req.filter?.statuses ?? ['unreviewed', 'unsure'],
+    statuses: req.filter?.statuses,
     q: req.filter?.q,
     sourceTypes: req.filter?.sourceTypes,
     categoryIds: req.filter?.categoryIds,
     uploader: req.filter?.uploader,
     seriesKey: req.filter?.seriesKey,
-    seriesStrategy: req.filter?.seriesStrategy,
     seedKey: req.filter?.seedKey,
     parentMediaId: req.filter?.parentMediaId,
     mediaIds: req.filter?.mediaIds,
   };
-  const base = buildFilteredMediaCte(filter);
+  if (resolveStatuses(filter) === 'empty') return [];
+  const base = buildFilteredMediaCte(filter, 'count');
   const rows = db
     .prepare(`WITH fm AS (${base.sql}) SELECT media_id FROM fm`)
     .all(...base.params) as Array<{ media_id: number }>;
@@ -93,6 +92,7 @@ export function applyBulk(db: ReviewDb, req: BulkRequest): BulkResponse {
   let protectedCount = 0;
   let skipped = 0;
 
+  // Entire bulk is one SQLite transaction — crash mid-loop rolls back all.
   const tx = db.transaction(() => {
     for (const mediaId of mediaIds) {
       const cur = selectCurrent.get(req.projectId, mediaId) as
@@ -125,7 +125,6 @@ export function applyBulk(db: ReviewDb, req: BulkRequest): BulkResponse {
         continue;
       }
 
-      // set_status
       if (oldStatus === targetStatus) {
         skipped += 1;
         continue;
@@ -180,6 +179,10 @@ export function applyBulk(db: ReviewDb, req: BulkRequest): BulkResponse {
   };
 }
 
+/**
+ * Undo only if no later history row exists for the same project/media
+ * after this batch's history entry (covers sparse reset where current row is gone).
+ */
 export function undoBatch(db: ReviewDb, req: UndoRequest): UndoResponse {
   let batchId = req.batchId;
   if (!batchId) {
@@ -211,17 +214,23 @@ export function undoBatch(db: ReviewDb, req: UndoRequest): UndoResponse {
   const now = utcNow();
   const hist = db
     .prepare(
-      `SELECT media_id, old_status, new_status
+      `SELECT id, media_id, old_status, new_status
        FROM media_review_history
        WHERE project_id = ? AND batch_id = ?
        ORDER BY id ASC`,
     )
     .all(req.projectId, batchId) as Array<{
+    id: number;
     media_id: number;
     old_status: ReviewStatus;
     new_status: ReviewStatus;
   }>;
 
+  const laterExists = db.prepare(
+    `SELECT 1 AS x FROM media_review_history
+     WHERE project_id = ? AND media_id = ? AND id > ?
+     LIMIT 1`,
+  );
   const selectCurrent = db.prepare(
     `SELECT status, batch_id FROM media_review_status
      WHERE project_id = ? AND media_id = ?`,
@@ -255,17 +264,14 @@ export function undoBatch(db: ReviewDb, req: UndoRequest): UndoResponse {
 
   const tx = db.transaction(() => {
     for (const h of hist) {
-      const cur = selectCurrent.get(req.projectId, h.media_id) as
-        | { status: ReviewStatus; batch_id: string | null }
-        | undefined;
-      // Only undo if current row still belongs to this batch (or sparse match for reset).
-      const currentMatchesBatch =
-        cur?.batch_id === batchId ||
-        (!cur && h.new_status === 'unreviewed');
-      if (!currentMatchesBatch) {
+      const later = laterExists.get(req.projectId, h.media_id, h.id);
+      if (later) {
         skippedProtected += 1;
         continue;
       }
+      const cur = selectCurrent.get(req.projectId, h.media_id) as
+        | { status: ReviewStatus; batch_id: string | null }
+        | undefined;
       const currentStatus: ReviewStatus = cur?.status ?? 'unreviewed';
       insertHistory.run(
         req.projectId,

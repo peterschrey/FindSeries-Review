@@ -14,8 +14,14 @@ cd ../api && npm install
 ```bash
 # Default DB: C:\Temp\FindSeries-Review-Test\findseries-v5-phase1-gate.db
 set REVIEW_DB_PATH=C:\Temp\FindSeries-Review-Test\findseries-v5-phase1-gate.db
+# Semicolon-separated roots required for physical file deletes
+set REVIEW_DELETE_ROOTS=C:\FindSeriesV5-Workspace\Media
+set REVIEW_FINALIZE_LOG_DIR=C:\Temp\FindSeries-Review-Test\finalize-logs
 npm run dev
 ```
+
+Never point write tests at the production FindSeries DB
+(`C:\FindSeriesV5-Workspace\findseries-v5.db`).
 
 ## Test / Bench
 
@@ -23,5 +29,3 @@ npm run dev
 npm test
 npm run bench
 ```
-
-Never point write tests at the production FindSeries DB.

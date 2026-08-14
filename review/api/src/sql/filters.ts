@@ -47,23 +47,44 @@ SELECT media_id FROM resolved`,
 
 export type FilterSelectMode = 'page' | 'count';
 
-function buildWhere(filter: MediaFilter): { where: string[]; params: unknown[]; joinExtra: string } {
+/** Resolve statuses: undefined → default; [] → empty sentinel. */
+export function resolveStatuses(filter: Pick<MediaFilter, 'statuses'>): ReviewStatus[] | 'empty' {
+  if (filter.statuses === undefined) return ['unreviewed', 'unsure'];
+  if (filter.statuses.length === 0) return 'empty';
+  return filter.statuses;
+}
+
+function buildWhere(filter: MediaFilter): { where: string[]; params: unknown[]; joinExtra: string; empty: boolean } {
   const params: unknown[] = [];
   const where: string[] = ['pm.project_id = ?'];
   params.push(filter.projectId);
 
-  const statuses = filter.statuses?.length
-    ? filter.statuses
-    : (['unreviewed', 'unsure'] as ReviewStatus[]);
+  const statuses = resolveStatuses(filter);
+  if (statuses === 'empty') {
+    return { where: ['0'], params: [], joinExtra: '', empty: true };
+  }
   where.push(`COALESCE(mrs.status, 'unreviewed') IN (${statuses.map(() => '?').join(',')})`);
   params.push(...statuses);
 
+  // Explicit empty arrays → empty result
+  if (filter.sourceTypes !== undefined && filter.sourceTypes.length === 0) {
+    return { where: ['0'], params: [], joinExtra: '', empty: true };
+  }
+  if (filter.categoryIds !== undefined && filter.categoryIds.length === 0) {
+    return { where: ['0'], params: [], joinExtra: '', empty: true };
+  }
+  if (filter.mediaIds !== undefined && filter.mediaIds.length === 0) {
+    return { where: ['0'], params: [], joinExtra: '', empty: true };
+  }
+
   if (filter.q && filter.q.trim()) {
-    where.push(`(m.title LIKE ? OR IFNULL(m.current_uploader,'') LIKE ?)`);
+    where.push(`(m.title LIKE ? OR COALESCE(m.current_uploader,'') LIKE ?)`);
     const like = `%${filter.q.trim()}%`;
     params.push(like, like);
   }
-  if (filter.uploader) {
+  if (filter.uploader === null) {
+    where.push(`(m.current_uploader IS NULL OR m.current_uploader = '')`);
+  } else if (filter.uploader !== undefined) {
     where.push(`m.current_uploader = ?`);
     params.push(filter.uploader);
   }
@@ -88,12 +109,16 @@ function buildWhere(filter: MediaFilter): { where: string[]; params: unknown[]; 
     params.push(filter.parentMediaId);
   }
   if (filter.seedKey) {
+    // PROVENANCE_MODEL: neighbor→media:parent OR keyword→lower(trim(query_text))
     where.push(`EXISTS (
       SELECT 1 FROM discoveries ds
+      LEFT JOIN review_provenance_type_map rpm ON rpm.source_type = ds.source_type
       WHERE ds.project_id = pm.project_id AND ds.media_id = pm.media_id
         AND (
-          (ds.parent_media_id IS NOT NULL AND ('media:' || ds.parent_media_id) = ?)
-          OR (ds.query_text IS NOT NULL AND lower(trim(ds.query_text)) = lower(?))
+          (COALESCE(rpm.family, '') = 'neighbor' AND ds.parent_media_id IS NOT NULL
+            AND ('media:' || ds.parent_media_id) = ?)
+          OR (COALESCE(rpm.family, '') = 'keyword' AND ds.query_text IS NOT NULL
+            AND trim(ds.query_text) <> '' AND lower(trim(ds.query_text)) = ?)
         )
     )`);
     params.push(filter.seedKey, filter.seedKey);
@@ -114,7 +139,7 @@ function buildWhere(filter: MediaFilter): { where: string[]; params: unknown[]; 
     params.unshift(...cat.params);
     joinExtra = `JOIN (${cat.sql}) catf ON catf.media_id = pm.media_id`;
   }
-  return { where, params, joinExtra };
+  return { where, params, joinExtra, empty: false };
 }
 
 /** Light projection for counts / id seeks (no downloads lookup). */
@@ -122,19 +147,30 @@ export function buildFilteredMediaCte(
   filter: MediaFilter,
   mode: FilterSelectMode = 'page',
 ): BoundSql {
-  const { where, params, joinExtra } = buildWhere(filter);
-  const needsMediaJoin =
-    mode === 'page' ||
-    Boolean(filter.q?.trim()) ||
-    Boolean(filter.uploader);
-
-  const mediaJoin = needsMediaJoin ? `JOIN media m ON m.id = pm.media_id` : `JOIN media m ON m.id = pm.media_id`;
-  // Always join media — uploader/title filters and page fields need it; SQLite planner is fine.
+  const built = buildWhere(filter);
+  if (built.empty) {
+    return {
+      sql: `SELECT CAST(NULL AS INTEGER) AS media_id,
+        CAST(NULL AS TEXT) AS title,
+        CAST(NULL AS TEXT) AS uploader,
+        CAST(NULL AS TEXT) AS timestamp,
+        CAST(NULL AS REAL) AS score,
+        CAST('unreviewed' AS TEXT) AS review_status,
+        CAST(NULL AS TEXT) AS local_path
+        WHERE 0`,
+      params: [],
+    };
+  }
+  const { where, params, joinExtra } = built;
 
   const select =
     mode === 'count'
       ? `pm.media_id AS media_id,
-  COALESCE(mrs.status, 'unreviewed') AS review_status`
+  COALESCE(mrs.status, 'unreviewed') AS review_status,
+  COALESCE(m.current_uploader, '') AS uploader,
+  COALESCE(m.title, '') AS title,
+  COALESCE(m.current_timestamp, '') AS timestamp,
+  COALESCE(pm.score, -1) AS score`
       : `pm.media_id AS media_id,
   m.title AS title,
   m.current_uploader AS uploader,
@@ -151,7 +187,7 @@ export function buildFilteredMediaCte(
 SELECT
   ${select}
 FROM project_media pm
-${mediaJoin}
+JOIN media m ON m.id = pm.media_id
 LEFT JOIN media_review_status mrs
   ON mrs.project_id = pm.project_id AND mrs.media_id = pm.media_id
 ${joinExtra}
@@ -160,17 +196,18 @@ WHERE ${where.join('\n  AND ')}
   return { sql, params };
 }
 
+/** ORDER BY expressions — must match seekPredicate normalization exactly. */
 export function sortClause(sort: SortField, dir: SortDir): string {
   const d = dir === 'desc' ? 'DESC' : 'ASC';
   switch (sort) {
     case 'title':
-      return `title COLLATE NOCASE ${d}, media_id ${d}`;
+      return `COALESCE(title, '') COLLATE NOCASE ${d}, media_id ${d}`;
     case 'uploader':
-      return `uploader COLLATE NOCASE ${d}, media_id ${d}`;
+      return `COALESCE(uploader, '') COLLATE NOCASE ${d}, media_id ${d}`;
     case 'timestamp':
-      return `timestamp ${d}, media_id ${d}`;
+      return `COALESCE(timestamp, '') ${d}, media_id ${d}`;
     case 'score':
-      return `score ${d}, media_id ${d}`;
+      return `COALESCE(score, -1) ${d}, media_id ${d}`;
     case 'media_id':
     default:
       return `media_id ${d}`;
@@ -191,33 +228,65 @@ export function encodeCursor(c: SeekCursor): string {
   return Buffer.from(JSON.stringify(c), 'utf8').toString('base64url');
 }
 
-export function decodeCursor(raw: string): SeekCursor {
-  return JSON.parse(Buffer.from(raw, 'base64url').toString('utf8')) as SeekCursor;
+export class CursorError extends Error {
+  statusCode = 400;
+  constructor(message: string) {
+    super(message);
+    this.name = 'CursorError';
+  }
+}
+
+export function decodeCursor(raw: string, expected: { sort: SortField; dir: SortDir }): SeekCursor {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(Buffer.from(raw, 'base64url').toString('utf8'));
+  } catch {
+    throw new CursorError('Malformed cursor');
+  }
+  if (!parsed || typeof parsed !== 'object') {
+    throw new CursorError('Malformed cursor');
+  }
+  const c = parsed as SeekCursor;
+  if (typeof c.mediaId !== 'number' || !Number.isFinite(c.mediaId)) {
+    throw new CursorError('Malformed cursor: mediaId');
+  }
+  if (c.sort !== expected.sort || c.dir !== expected.dir) {
+    throw new CursorError('Cursor sort/dir does not match current query');
+  }
+  return c;
 }
 
 export function seekPredicate(cursor: SeekCursor): BoundSql {
   const eqDir = cursor.dir === 'desc' ? '<' : '>';
   switch (cursor.sort) {
-    case 'title':
+    case 'title': {
+      const v = cursor.title ?? '';
       return {
-        sql: `(title COLLATE NOCASE ${eqDir} ? OR (title COLLATE NOCASE = ? AND media_id ${eqDir} ?))`,
-        params: [cursor.title ?? '', cursor.title ?? '', cursor.mediaId],
+        sql: `(COALESCE(title, '') COLLATE NOCASE ${eqDir} ? OR (COALESCE(title, '') COLLATE NOCASE = ? AND media_id ${eqDir} ?))`,
+        params: [v, v, cursor.mediaId],
       };
-    case 'uploader':
+    }
+    case 'uploader': {
+      const v = cursor.uploader ?? '';
       return {
-        sql: `(uploader COLLATE NOCASE ${eqDir} ? OR (uploader COLLATE NOCASE = ? AND media_id ${eqDir} ?))`,
-        params: [cursor.uploader ?? '', cursor.uploader ?? '', cursor.mediaId],
+        sql: `(COALESCE(uploader, '') COLLATE NOCASE ${eqDir} ? OR (COALESCE(uploader, '') COLLATE NOCASE = ? AND media_id ${eqDir} ?))`,
+        params: [v, v, cursor.mediaId],
       };
-    case 'timestamp':
+    }
+    case 'timestamp': {
+      const v = cursor.timestamp ?? '';
       return {
-        sql: `(IFNULL(timestamp,'') ${eqDir} ? OR (IFNULL(timestamp,'') = ? AND media_id ${eqDir} ?))`,
-        params: [cursor.timestamp ?? '', cursor.timestamp ?? '', cursor.mediaId],
+        sql: `(COALESCE(timestamp, '') ${eqDir} ? OR (COALESCE(timestamp, '') = ? AND media_id ${eqDir} ?))`,
+        params: [v, v, cursor.mediaId],
       };
-    case 'score':
+    }
+    case 'score': {
+      const v = cursor.score ?? -1;
       return {
-        sql: `(IFNULL(score,-1) ${eqDir} ? OR (IFNULL(score,-1) = ? AND media_id ${eqDir} ?))`,
-        params: [cursor.score ?? -1, cursor.score ?? -1, cursor.mediaId],
+        sql: `(COALESCE(score, -1) ${eqDir} ? OR (COALESCE(score, -1) = ? AND media_id ${eqDir} ?))`,
+        params: [v, v, cursor.mediaId],
       };
+    }
     case 'media_id':
     default:
       return { sql: `media_id ${eqDir} ?`, params: [cursor.mediaId] };

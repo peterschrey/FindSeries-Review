@@ -10,6 +10,7 @@ import {
   buildFilteredMediaCte,
   decodeCursor,
   encodeCursor,
+  resolveStatuses,
   seekPredicate,
   sortClause,
 } from '../sql/filters.js';
@@ -19,12 +20,15 @@ function emptyCounts(): StatusCounts {
 }
 
 export function computeStatusCounts(db: ReviewDb, filter: MediaFilter): StatusCounts {
+  const resolved = resolveStatuses(filter);
+  if (resolved === 'empty') return emptyCounts();
+
   const hasExtra =
     Boolean(filter.q?.trim()) ||
-    Boolean(filter.uploader) ||
-    Boolean(filter.mediaIds?.length) ||
-    Boolean(filter.sourceTypes?.length) ||
-    Boolean(filter.categoryIds?.length) ||
+    filter.uploader !== undefined ||
+    filter.mediaIds !== undefined ||
+    filter.sourceTypes !== undefined ||
+    filter.categoryIds !== undefined ||
     Boolean(filter.seriesKey) ||
     Boolean(filter.seedKey) ||
     Boolean(filter.parentMediaId);
@@ -47,7 +51,6 @@ export function computeStatusCounts(db: ReviewDb, filter: MediaFilter): StatusCo
     const keep = Number(rows.find((r) => r.status === 'keep')?.c ?? 0);
     const reject = Number(rows.find((r) => r.status === 'reject')?.c ?? 0);
     const unsure = Number(rows.find((r) => r.status === 'unsure')?.c ?? 0);
-    // Sparse: missing current rows count as unreviewed.
     const unreviewed = Math.max(0, Number(totalPm) - keep - reject - unsure);
     return {
       unreviewed,
@@ -109,22 +112,24 @@ export function queryGallery(db: ReviewDb, q: GalleryQuery): GalleryResponse {
     categoryIds: q.categoryIds,
     uploader: q.uploader,
     seriesKey: q.seriesKey,
-    seriesStrategy: q.seriesStrategy,
     seedKey: q.seedKey,
     parentMediaId: q.parentMediaId,
     mediaIds: q.mediaIds,
   };
 
-  // 1) Seek page on light projection (no downloads), then hydrate only the page rows.
-  const light = buildFilteredMediaCte(filter, 'count');
-  // For non-media_id sorts we need page projection fields in the seek query.
+  if (resolveStatuses(filter) === 'empty') {
+    return { items: [], nextCursor: null, total: 0, statusCounts: emptyCounts() };
+  }
+
   const pageBase =
-    q.sort === 'media_id' ? light : buildFilteredMediaCte(filter, 'page');
+    q.sort === 'media_id'
+      ? buildFilteredMediaCte(filter, 'count')
+      : buildFilteredMediaCte(filter, 'page');
   const params = [...pageBase.params];
   let seekSql = '';
   if (q.cursor) {
-    const c = decodeCursor(q.cursor);
-    const pred = seekPredicate({ ...c, sort: q.sort, dir: q.dir });
+    const c = decodeCursor(q.cursor, { sort: q.sort, dir: q.dir });
+    const pred = seekPredicate(c);
     seekSql = `WHERE ${pred.sql}`;
     params.push(...pred.params);
   }
@@ -181,10 +186,11 @@ export function queryGallery(db: ReviewDb, q: GalleryQuery): GalleryResponse {
   }
 
   const statusCounts = computeStatusCounts(db, filter);
-  const statusList = filter.statuses?.length
-    ? filter.statuses
-    : (['unreviewed', 'unsure'] as const);
-  const total = statusList.reduce((sum, st) => sum + statusCounts[st], 0);
+  const statusList = resolveStatuses(filter);
+  const total =
+    statusList === 'empty'
+      ? 0
+      : statusList.reduce((sum, st) => sum + statusCounts[st], 0);
   return {
     items,
     nextCursor,

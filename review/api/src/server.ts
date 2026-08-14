@@ -18,6 +18,7 @@ import { listCategoryNodes, queryFacets } from './services/categories.js';
 import { queryFocus } from './services/focus.js';
 import { applyBulk, undoBatch } from './services/bulk.js';
 import { commitFinalize, previewFinalize } from './services/finalize.js';
+import { CursorError } from './sql/filters.js';
 
 function parseBody<T>(schema: ZodTypeAny, body: unknown): T {
   const r = schema.safeParse(body);
@@ -36,14 +37,19 @@ function errMessage(err: unknown): string {
 export type BuildServerOpts = {
   db: ReviewDb;
   finalizeLogDir: string;
+  deleteRoots: string[];
 };
 
 export async function buildServer(opts: BuildServerOpts) {
   const app = Fastify({ logger: false });
-  const { db, finalizeLogDir } = opts;
+  const { db, finalizeLogDir, deleteRoots } = opts;
+  const finalizeOpts = { logDir: finalizeLogDir, deleteRoots };
 
   app.setErrorHandler((err, _req, reply) => {
-    const status = (err as { statusCode?: number }).statusCode ?? 500;
+    const status =
+      err instanceof CursorError
+        ? 400
+        : ((err as { statusCode?: number }).statusCode ?? 500);
     reply.status(status).send({
       error: errMessage(err),
       statusCode: status,
@@ -95,7 +101,7 @@ export async function buildServer(opts: BuildServerOpts) {
       FinalizePreviewRequestSchema,
       req.body,
     );
-    return previewFinalize(db, q);
+    return previewFinalize(db, q, finalizeOpts);
   });
 
   app.post('/api/finalize/commit', async (req) => {
@@ -103,7 +109,7 @@ export async function buildServer(opts: BuildServerOpts) {
       FinalizeCommitRequestSchema,
       req.body,
     );
-    return commitFinalize(db, q, finalizeLogDir);
+    return commitFinalize(db, q, finalizeOpts);
   });
 
   return app;

@@ -92,7 +92,6 @@ function drilldownFor(
     categoryIds: base.categoryIds,
     uploader: base.uploader,
     seriesKey: base.seriesKey,
-    seriesStrategy: base.seriesStrategy,
     seedKey: base.seedKey,
     parentMediaId: base.parentMediaId,
     mediaIds: base.mediaIds,
@@ -101,7 +100,8 @@ function drilldownFor(
     case 'uploader':
       return {
         ...common,
-        uploader: key === '(ohne Uploader)' ? undefined : key,
+        // null = empty/null uploader filter (not undefined = no filter)
+        uploader: key === '(ohne Uploader)' ? null : key,
       };
     case 'series':
       return { ...common, seriesKey: key };
@@ -148,7 +148,6 @@ export function queryGroups(db: ReviewDb, q: GroupQuery): GroupsResponse {
     categoryIds: q.categoryIds,
     uploader: q.uploader,
     seriesKey: q.seriesKey,
-    seriesStrategy: q.seriesStrategy,
     seedKey: q.seedKey,
     parentMediaId: q.parentMediaId,
     mediaIds: q.mediaIds,
@@ -157,10 +156,7 @@ export function queryGroups(db: ReviewDb, q: GroupQuery): GroupsResponse {
   const { selectKey, join, joinParams } = groupKeyExpr(q.groupBy);
   const jp = joinParams(q.projectId);
 
-  // Keys only first; accurate totals via drilldown status counts.
-  // For uploader grouping the light CTE has no uploader column — use page projection.
-  const keyBase =
-    q.groupBy === 'uploader' ? buildFilteredMediaCte(filter, 'page') : base;
+  const keyBase = base;
 
   const keyRows = db
     .prepare(

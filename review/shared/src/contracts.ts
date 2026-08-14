@@ -23,17 +23,29 @@ export const GroupBySchema = z.enum([
 ]);
 export type GroupBy = z.infer<typeof GroupBySchema>;
 
-/** Shared filter used by gallery, groups, facets, bulk. */
+/**
+ * Shared filter used by gallery, groups, facets, bulk.
+ *
+ * Array / optional semantics (P0):
+ * - statuses omitted/undefined → default unreviewed+unsure (applied in services)
+ * - statuses [] → empty result set (UI chips all off)
+ * - sourceTypes/categoryIds/mediaIds [] → empty result (explicit empty selection)
+ * - uploader undefined → no uploader filter
+ * - uploader null → current_uploader IS NULL OR ''
+ * - uploader string → exact match
+ *
+ * seriesStrategy removed from P0 (deferred to FRV-30).
+ */
 export const MediaFilterSchema = z.object({
   projectId: z.number().int().positive(),
-  statuses: z.array(ReviewStatusSchema).default(['unreviewed', 'unsure']),
+  statuses: z.array(ReviewStatusSchema).optional(),
   q: z.string().optional(),
   sourceTypes: z.array(z.string()).optional(),
   /** Category roots; subtree + fallback semantics from CATEGORY_GRAPH.md */
   categoryIds: z.array(z.number().int().positive()).optional(),
-  uploader: z.string().optional(),
+  /** undefined = no filter; null = empty/null uploader; string = exact */
+  uploader: z.string().nullable().optional(),
   seriesKey: z.string().optional(),
-  seriesStrategy: z.string().optional(),
   seedKey: z.string().optional(),
   parentMediaId: z.number().int().positive().optional(),
   mediaIds: z.array(z.number().int().positive()).optional(),
@@ -127,7 +139,8 @@ export const FacetsResponseSchema = z.object({
     count: z.number().int().nonnegative(),
   })),
   uploaders: z.array(z.object({
-    uploader: z.string(),
+    /** null means empty/null uploader bucket */
+    uploader: z.string().nullable(),
     count: z.number().int().nonnegative(),
   })),
 });
@@ -146,7 +159,9 @@ export const FocusRelationSchema = z.object({
   label: z.string(),
   total: z.number().int().nonnegative(),
   statusCounts: StatusCountsSchema,
-  filter: MediaFilterSchema,
+  /** false → not drilldown-capable (P1 / missing relation) */
+  available: z.boolean(),
+  filter: MediaFilterSchema.nullable(),
   note: z.string().optional(),
 });
 export type FocusRelation = z.infer<typeof FocusRelationSchema>;
@@ -200,8 +215,19 @@ export const UndoResponseSchema = z.object({
 });
 export type UndoResponse = z.infer<typeof UndoResponseSchema>;
 
+export const FinalizeClassSchema = z.enum([
+  'eligible_for_global_finalization',
+  'blocked_by_other_project',
+  'already_finalized',
+  'missing_path',
+  'missing_file',
+  'path_not_allowed',
+]);
+export type FinalizeClass = z.infer<typeof FinalizeClassSchema>;
+
 export const FinalizePreviewRequestSchema = z.object({
   projectId: z.number().int().positive(),
+  /** Max candidates to consider (project rejects, skipping already finalized for forward progress). */
   limit: z.number().int().min(1).max(1000).default(100),
 });
 export type FinalizePreviewRequest = z.infer<typeof FinalizePreviewRequestSchema>;
@@ -212,13 +238,18 @@ export const FinalizeItemSchema = z.object({
   localPath: z.string().nullable(),
   fileExists: z.boolean().nullable(),
   reviewStatus: ReviewStatusSchema,
+  classification: FinalizeClassSchema,
+  blockingProjectIds: z.array(z.number().int()).optional(),
 });
 export type FinalizeItem = z.infer<typeof FinalizeItemSchema>;
 
 export const FinalizePreviewResponseSchema = z.object({
-  candidateCount: z.number().int().nonnegative(),
-  withPath: z.number().int().nonnegative(),
-  missingPath: z.number().int().nonnegative(),
+  previewToken: z.string(),
+  projectId: z.number().int(),
+  consideredCount: z.number().int().nonnegative(),
+  eligibleCount: z.number().int().nonnegative(),
+  blockedCount: z.number().int().nonnegative(),
+  alreadyFinalizedSkipped: z.number().int().nonnegative(),
   sample: z.array(FinalizeItemSchema),
 });
 export type FinalizePreviewResponse = z.infer<typeof FinalizePreviewResponseSchema>;
@@ -226,19 +257,25 @@ export type FinalizePreviewResponse = z.infer<typeof FinalizePreviewResponseSche
 export const FinalizeCommitRequestSchema = z.object({
   projectId: z.number().int().positive(),
   confirm: z.literal(true),
+  /** Must match a prior preview snapshot — commit only those mediaIds. */
+  previewToken: z.string().min(1),
   dryRun: z.boolean().default(false),
   deleteFiles: z.boolean().default(true),
-  maxItems: z.number().int().min(1).max(50000).default(1000),
 });
 export type FinalizeCommitRequest = z.infer<typeof FinalizeCommitRequestSchema>;
 
 export const FinalizeCommitResponseSchema = z.object({
   dryRun: z.boolean(),
+  previewToken: z.string(),
   attempted: z.number().int().nonnegative(),
+  eligibleAttempted: z.number().int().nonnegative(),
+  rejectedDb: z.number().int().nonnegative(),
   deletedFiles: z.number().int().nonnegative(),
   missingFiles: z.number().int().nonnegative(),
+  pathNotAllowed: z.number().int().nonnegative(),
   lockedOrError: z.number().int().nonnegative(),
-  dbMarked: z.number().int().nonnegative(),
+  skippedNonEligible: z.number().int().nonnegative(),
+  alreadyFinalized: z.number().int().nonnegative(),
   logPath: z.string().nullable(),
 });
 export type FinalizeCommitResponse = z.infer<typeof FinalizeCommitResponseSchema>;
