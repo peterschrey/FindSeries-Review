@@ -5,9 +5,18 @@ alwaysApply: true
 
 # FindSeries Review-MVP
 
+## Source of Truth (Rangfolge)
+
+1. `docs/review-mvp/MVP_SPEC.md` – fachliche/UX-Spezifikation
+2. Notion „Review MVP – Tasks“ – DoD, Tests, Abhängigkeiten
+3. aktueller UI-Prototyp unter `docs/review-mvp/prototypes/`
+4. bestehender FindSeries-Code und reale SQLite-Struktur
+
+Bei Kollision: Abweichung nennen und korrigieren; bei fundamentaler Architekturfrage STOP.
+
 ## Taskarbeit
 
-- Arbeite taskweise nach Notion „Review MVP – Tasks“ (Source of Truth).
+- Arbeite taskweise nach „Review MVP – Tasks“.
 - Implementiere keine spätere Funktion vorzeitig.
 - Keine neuen Features außerhalb des Tasks „weil sie praktisch wären“.
 - Definition of Done und Tests eines Tasks müssen erfüllt sein, bevor er Done wird.
@@ -27,16 +36,26 @@ alwaysApply: true
 - Massenänderungen müssen transaktional und nachvollziehbar sein.
 - WAL-Modus und Schreibkonkurrenz mit Download-Workern berücksichtigen.
 
-## Review-Semantik
+## Review-Semantik (MVP_SPEC)
 
+- Status: Unbewertet | Behalten | Löschen | Unsicher (projektbezogen/global).
 - „Löschen“ im Review bedeutet zunächst Review-Status, NICHT physisches Löschen.
-- Physisches Löschen erfolgt ausschließlich über einen getrennten, kontrollierten Finalisierungsschritt.
+- Physisches Löschen erfolgt ausschließlich über einen getrennten Finalisierungsschritt.
 - „Behalten“ ist bei Massen-Reject standardmäßig geschützt.
 
-## UI / Performance
+## UI (verbindliche UX-Entscheidungen)
 
-- UI muss für 100.000+ Medien entworfen werden.
-- Keine vollständige 100k-Medienliste in Browser/DOM laden.
+- Eine integrierte Single View; horizontale Gruppenübersicht bleibt zentral.
+- Einfachklick = Auswahl; Doppelklick = optionaler Fokus.
+- Fokus als erste Karte in der Gruppen-Shelf; × in der Fokuskarte hebt Fokus auf.
+- Kein separater „Fokus aufheben“-Button in der Toolbar.
+- Bei Fokus: Ähnlich | Serie | Kategorie | Seed | Uploader | Herkunft, danach normale Gruppen.
+- Similarity-Slider direkt in der Karte „Ähnlich“ (P1-Logik, UI-Struktur vorbereiten).
+- Statusstatistik für Gesamtbestand, Ergebnismenge, Auswahl und je Gruppenkarte.
+
+## Performance
+
+- UI für 100.000+ Medien; keine vollständige Liste in Browser/DOM.
 - Pagination/Virtualisierung/Lazy Loading früh berücksichtigen.
 - Performance messen, nicht vermuten.
 - Keine Cloud-Abhängigkeit für Similarity ohne ausdrückliche Entscheidung.

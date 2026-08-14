@@ -1,70 +1,75 @@
 # Review-MVP – Scope, Ziele und Nicht-Ziele (FRV-1)
 
-Status: verbindlich für alle folgenden Tasks.  
-Bezug: Notion FRV-1, abgestimmtes UI-Zielbild auf der FindSeries-Seite.
+**Status:** Done (FRV-1)  
+**Bezug:** `MVP_SPEC.md` (fachliche/UX-Source of Truth) · Notion FRV-1
+
+Dieses Dokument verdichtet Scope und Grenzen. Bei Widerspruch gilt **`MVP_SPEC.md`**.
 
 ## Ziel
 
-Aus **100.000+** gefundenen Bildern sehr schnell große irrelevante Mengen aussortieren – ohne die bestehende FindSeries Download-/Discovery-/Metadata-Pipeline zu gefährden.
+Sehr große FindSeries-Bildbestände (100.000+ Medien) schnell und sicher sichten, gruppieren, filtern und in vier Review-Zustände überführen – ohne die bestehende Download-/Discovery-/Metadata-Pipeline zu gefährden.
+
+Hauptfall: große zusammenhängende Mengen (Kategorieäste, Herkunftsgruppen, Serien, Uploader, Seeds/Neighbor, Ranges), nicht Einzelbildpflege.
 
 ## P0 (Muss für belastbaren MVP)
 
 | Bereich | Inhalt |
 |---|---|
-| Review-Status | Global pro Medium: **Unbewertet**, **Behalten**, **Löschen**, **Unsicher** |
-| Schutz | Bei Massen-Reject ist **Behalten** standardmäßig geschützt |
-| Löschsemantik | „Löschen“ = Status only; physisches Löschen nur Finalisierungsschritt |
+| Review-Status | Pro Medium genau einer: **Unbewertet**, **Behalten**, **Löschen**, **Unsicher** (projektbezogen/global laut MVP_SPEC) |
+| Default-Filter | Unbewertet + Unsicher sichtbar; Behalten + Löschen ausgeblendet (einzeln zuschaltbar) |
+| Schutz | Bei Massen-Reject wird **Behalten** standardmäßig nicht überschrieben; Counts transparent |
+| Löschsemantik | „Löschen“ = Status only; physisches Löschen nur Finalisierung mit Dry-Run/Log |
 | UI | Eine integrierte Single View (Toolbar, Statusübersicht, Gruppen-Shelf, Facetten, Galerie, Kontextspalte) |
-| Auswahl | Klick / Ctrl / Shift; Hotkeys K/R/U/N |
+| Auswahl | Einfachklick / Ctrl / Shift; Hotkeys K/R/U/N; kein Fokus per Einfachklick |
 | Gruppen | Herkunft, Kategorie, Serie, Uploader, Seed (horizontale Shelf) |
-| Provenienz | Nur aus echten DB-Daten (`discoveries` u. a.) |
-| Kategorie/Serie | Navigation und Gruppierung über bestehende Projekt-/Mediendaten |
-| Fokus | Optional: Doppelklick setzt Fokus; X in Fokuskarte hebt auf; Beziehungskarten in derselben Shelf |
-| Statistik | Counts + segmentierte Balken für Gesamtbestand, Ergebnismenge, Auswahl (+ pro Gruppe) |
-| Persistenz | Review-Status und Historie in SQLite; Sitzungsfilter später (P1-Task FRV-26) |
-| Performance-Grundlage | Cursor-/seek-Pagination, Virtualisierung, keine 100k-DOM-Liste |
+| Provenienz | Nur aus echten DB-Daten; Mehrfachherkunft möglich |
+| Kategorie/Serie | Unterbaum/Union, deduplizierte Mengen; natürliche Serienfolge |
+| Fokus | Optional: Doppelklick setzt Fokus; × in Fokuskarte hebt auf; kein Toolbar-Button |
+| Fokus-Beziehungen | Ähnlich \| Serie \| Kategorie \| Seed \| Uploader \| Herkunft, danach normale Gruppen |
+| Statistik | Gesamtbestand + Ergebnismenge + Auswahl + je Gruppenkarte |
+| Undo | Batch-/Action-Historie; Session-Undo für Massenaktionen |
+| Persistenz | Review-Status/Historie in SQLite; Sitzungsfilter = P1 (FRV-26) |
+| Performance | Cursor/seek-Pagination, Virtualisierung, lokaler Thumbnail-Cache |
 | Tests/Release | Backup/Migration-Sicherheit, Kern-E2E, Windows-Start |
 
 ## P1 (nach P0-Kern bzw. Messung)
 
-- Lokale visuelle Ähnlichkeit (Embeddings, Threshold-Slider)
-- Near-Duplicates / pHash / visuelle Cluster
-- Embedding-/ANN-Optimierung nur bei nachgewiesenem Bedarf
+- Lokale Similarity inkl. Slider in der Karte „Ähnlich“ (UI-Platzhalter schon in P0-Struktur)
+- Embeddings, pHash/Near-Duplicates, visuelle Cluster
+- ANN nur bei nachgewiesenem Bedarf
 - Review-Sitzung/Filterzustand persistieren (FRV-26)
 - Master-Dokumentation/Agent-Prompt (FRV-47)
 
 ## P2 / später
 
-- ANN-Index nur falls Brute-Force zu langsam (FRV-41)
-- Weitere Optimierungen nach Benchmark
+- ANN-Index (FRV-41) und weitere Optimierungen nach Benchmark
 
 ## Explizite Nicht-Ziele
 
 - Sofortiges physisches Löschen beim Markieren als „Löschen“
-- Cloud-APIs für Embeddings/Similarity (ohne ausdrückliche Entscheidung)
-- Vollwertiges DAM / Asset-Management
+- Cloud-KI-Pflicht / Cloud-Embeddings ohne Entscheidung
+- Vollwertiges DAM, Bildbearbeitung, Benutzer-/Rechteverwaltung, Mobile-First
 - Separate Betriebsmodi Explorer / Cluster / Kategorieansicht
 - Unnötiges Refactoring der bestehenden PowerShell-Pipeline
 - Erfinden von Herkunftstypen, die die DB nicht belegt
+- Sortierung nach Dateigröße als Kernfeature
 - Vollständiges Laden aller Medien in den Browser
 
-## Scope-Zuordnung (Checkliste für spätere Features)
+## Scope-Zuordnung
 
-Jedes neue Feature muss einem Punkt oben zugeordnet werden können:
+Jedes neue Feature muss zuordenbar sein:
 
-1. Passt zu P0 → in Phase/Task der bestehenden Liste umsetzen.
-2. Passt zu P1 → erst nach P0 bzw. laut Abhängigkeiten.
-3. Passt zu Nicht-Zielen → ablehnen oder neue Notion-Entscheidung.
-4. Unklar → STOP und Entscheidung einholen.
+1. P0 → bestehende Phase/Task
+2. P1 → nach P0 bzw. Abhängigkeiten
+3. Nicht-Ziel → ablehnen oder Notion-Entscheidung
+4. Unklar → STOP
 
-## Abnahmereferenz (FRV-1 Verifikation)
+## Abnahme (Workflows A–E aus MVP_SPEC)
 
-Gegen UI-Prototypen und reale Cat_Dentistry-Workflows:
+1. **Kategorieast** – Unterbaum, Union, Bulk-Löschen mit Behalten-Schutz  
+2. **Herkunft** – filtern/gruppieren, Gruppe reviewen  
+3. **Serie** – natürliche Reihenfolge, Shift-Range, `R`  
+4. **Optionaler Fokus** – Doppelklick / × / Beziehungen; globale Filter bleiben  
+5. **Statistik** – Gesamt / Ergebnis / Auswahl / Gruppen vs. DB-Counts  
 
-1. Kategorieast reviewen und Massen-Reject mit Behalten-Schutz
-2. Nach Herkunft filtern/gruppieren
-3. Serie/Range mit Hotkeys
-4. Optionaler Fokus inkl. Beziehungskarten
-5. Statusstatistik Gesamt / Ergebnis / Auswahl konsistent
-
-Keine unklaren Muss-Funktionen außerhalb dieser Datei und der Notion-Tasks.
+Keine unklaren Muss-Funktionen außerhalb von `MVP_SPEC.md` und den Notion-Tasks.

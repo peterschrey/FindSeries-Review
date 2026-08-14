@@ -2,6 +2,8 @@
 
 Stand: 2026-08-14, Codebasis `5.0.14-hotfix66`, Produktiv-DB nur read-only analysiert.
 
+**Rangfolge:** Fachliches/UX in `MVP_SPEC.md`. Dieses Dokument beschreibt nur die technische Realität (Code + SQLite). Bei Konflikt: dokumentieren, nicht raten.
+
 ## Arbeitsumgebung
 
 | Element | Pfad / Hinweis |
@@ -43,7 +45,7 @@ Kernentitäten:
 - `review_exports` – Explorer-Review (Hardlink/Copy, Status `open`/`rejected`/…)
 - `media_rejections` – workspaceweite Sperre nach manuellem Löschen im Explorer-Review
 
-Es gibt **keinen** globalen Vier-Status-Review (`Unbewertet|Behalten|Löschen|Unsicher`) für den neuen MVP. Bestehendes Review ist Explorer-basiert und binär (offen vs. verworfen).
+Es gibt **noch keinen** Vier-Status-Review (`Unbewertet|Behalten|Löschen|Unsicher`) laut MVP_SPEC. Bestehendes Review ist Explorer-basiert und binär (offen vs. verworfen über `review_exports` / `media_rejections`). Der neue Status ist laut Spec projektbezogen/global und wird in Phase 1 ergänzt – ohne die Explorer-Pfade umzudeuten.
 
 ## Gemessene Bestandsgrößen (Produktiv, read-only)
 
