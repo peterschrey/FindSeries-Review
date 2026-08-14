@@ -1,0 +1,82 @@
+---
+description: Verbindlicher Git- und Checkpoint-Workflow für autonome Agent-Arbeit
+globs:
+alwaysApply: true
+---
+
+# Checkpoint- und Git-Workflow
+
+Arbeite innerhalb des beauftragten Task-/Phasenbereichs selbständig.
+Stelle keine Rückfragen zu Routineentscheidungen wie Commit, Push,
+Taskstatus oder Checkpoint-Abschluss.
+
+## Verbindliche Bedeutung von "Checkpoint"
+
+Wenn ein im Auftrag definierter Checkpoint erreicht ist:
+
+1. Beende den aktuellen Task vollständig.
+2. Führe alle relevanten Tests und Verifikationen aus.
+3. Aktualisiere Taskstatus / Notion / Checkpoint-Dokumentation,
+   soweit dies zum Auftrag gehört.
+4. Prüfe `git status`.
+5. Stage ausschließlich Änderungen, die zu der aktuellen Arbeit gehören.
+6. Committe alle abgeschlossenen Änderungen mit einer aussagekräftigen
+   Commit-Message.
+7. Pushe den Commit auf den aktuell verwendeten Remote-Branch `origin`.
+8. Ermittle den finalen Commit-SHA.
+9. Gib den vereinbarten Checkpoint-Report aus.
+10. Wenn der Auftrag am Checkpoint einen Review vorsieht:
+    STOPPE anschließend und warte auf Freigabe.
+
+## Keine Rückfragen zu Git-Routine
+
+Insbesondere NICHT fragen:
+
+- "Soll ich committen?"
+- "Soll ich committen und pushen?"
+- "Nur committen oder auch pushen?"
+- "Soll ich die Änderungen uncommitted lassen?"
+- "Soll ich den Checkpoint jetzt abschließen?"
+
+An einem definierten Checkpoint gilt automatisch:
+
+    TEST → COMMIT → PUSH → REPORT → STOP
+
+sofern der Checkpoint einen Review vorsieht.
+
+## Wann eine Rückfrage / ein Stopp zulässig ist
+
+Nur stoppen bzw. melden, wenn mindestens eines davon vorliegt:
+
+- Tests schlagen fehl und können nicht sinnvoll selbst behoben werden.
+- Git Merge-/Rebase-Konflikt.
+- Push wird durch Authentifizierung/Berechtigung verhindert.
+- Remote-Branch hat inkompatible Änderungen und ein normaler Push
+  wäre nicht möglich.
+- Es wären fremde/unzuordenbare lokale Änderungen zu committen.
+- Force-Push wäre erforderlich.
+- Destruktive oder irreversible Aktion wäre erforderlich.
+- Eine echte Architektur-/Datenmodellentscheidung außerhalb des
+  bestehenden Auftrags ist notwendig.
+
+In diesen Fällen NICHT improvisieren oder destruktiv handeln.
+
+## Git-Sicherheitsregeln
+
+- Niemals `git push --force` oder `--force-with-lease` ohne expliziten Auftrag.
+- Keine fremden Änderungen verwerfen.
+- Kein automatisches Rebase eines gemeinsam genutzten Branches.
+- Keine Secrets, Datenbanken, Temp-Dateien oder lokale Testartefakte committen.
+- Keine produktiven Datenbanken committen.
+- Den aktuellen Arbeitsbranch verwenden; nicht eigenmächtig den Branch wechseln.
+- Nach erfolgreichem Push immer Branch und Commit-SHA im Report nennen.
+
+## Zwischen normalen Tasks
+
+Nicht nach jedem kleinen Edit committen.
+
+Innerhalb einer beauftragten Phase:
+- logisch zusammenhängend arbeiten,
+- sinnvolle kleine Commits sind erlaubt,
+- spätestens am definierten Checkpoint müssen alle fertigen Änderungen
+  committed und gepusht sein.
