@@ -1,8 +1,21 @@
 # Phase-1 Checkpoint (FRV-1 … FRV-10)
 
-**Stand:** 2026-08-14 (nach Review-Korrekturschleife)  
+**Stand:** 2026-08-14 (nach Review-Korrekturschleife + Stack-Update)  
 **Branch:** `review-mvp`  
 **Stop:** Vor FRV-11 / Phase 2 Backend – externer Review erneut vorgesehen.
+
+### Stack-Update vor Phase 2 (verbindlich)
+
+P0-Review-Stack laut aktualisiertem `ARCHITECTURE.md`:
+
+- Frontend: **Vite + React + TypeScript**
+- Backend: **Node.js + TypeScript + Fastify**
+- SQLite: **better-sqlite3** (bevorzugt)
+- Gemeinsame Verträge: **`review/shared/`**
+- **Kein Python/FastAPI** im P0-Web/API-Stack; P0 muss ohne Python laufen.
+- Python nur optional als späterer P1-ML-Worker.
+
+Fachliche DoDs der FRV-11ff-Tasks bleiben unverändert; nur technische Kontext-/Stack-Hinweise werden angepasst.
 
 ## 1. Tasks FRV-1 … FRV-10
 
@@ -80,7 +93,8 @@ Keine Schreib-/Migrationsänderung an der Produktiv-DB. Keine Phase-2-API.
 3. Undo späterer Batches muss Current-`batch_id` respektieren (Merge-Schutz).
 4. Produktiv-DB unter Dauerlast: Online-Backup bevorzugt über CLI mit `main` bzw. Backup-API.
 5. FRV-11 (Galerie-API) **nicht** gestartet.
+6. Erste Backend-Implementierung ist Node/Fastify/TS (nicht FastAPI).
 
 ## 7. Nächster Schritt
 
-Externer Review des Branches `review-mvp`, danach Freigabe für **FRV-11**.
+Externer Review des Branches `review-mvp` (inkl. Stack-Update), danach Freigabe für **FRV-11** auf dem Node/Fastify-Stack.

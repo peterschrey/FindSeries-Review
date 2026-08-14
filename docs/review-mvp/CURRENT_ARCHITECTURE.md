@@ -2,7 +2,20 @@
 
 Stand: 2026-08-14, Codebasis `5.0.14-hotfix66`, Produktiv-DB nur read-only analysiert.
 
-**Rangfolge:** Fachliches/UX in `MVP_SPEC.md`. Dieses Dokument beschreibt nur die technische Realität (Code + SQLite). Bei Konflikt: dokumentieren, nicht raten.
+**Rangfolge:** Fachliches/UX in `MVP_SPEC.md`. Dieses Dokument beschreibt die technische Realität (Code + SQLite) und den verbindlichen Review-P0-Zielstack. Bei Konflikt: dokumentieren, nicht raten.
+
+## Review-MVP Zielstack (P0, vor Phase 2)
+
+Verbindlich laut `ARCHITECTURE.md` (Stack-Update 2026-08-14):
+
+| Schicht | Stack |
+|---|---|
+| Frontend | Vite + React + TypeScript |
+| Backend | Node.js + TypeScript + Fastify |
+| SQLite | better-sqlite3 (bevorzugt, Spike-vorbehaltlich) |
+| Verträge | `review/shared/` (gemeinsame TS Types/Schemas) |
+
+Python ist **nicht** Teil des P0-Web/API-Stacks (kein FastAPI). Optionaler P1-ML-Worker später möglich. Phase-2-Code existiert noch nicht.
 
 ## Arbeitsumgebung
 
