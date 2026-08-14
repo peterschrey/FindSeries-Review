@@ -10,9 +10,9 @@ Workspace/
 **/*.sqlite
 **/*.sqlite3
 
-# Media and review exports (workspace runtime, not source)
+# Media runtime folders (outside this repo in production workspaces).
+# Do NOT ignore ./review/ (source tree for Review-MVP).
 Media/
-/Review/
 Logs/
 Diagnostics/
 Temp/
