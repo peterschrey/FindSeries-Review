@@ -31,6 +31,21 @@ CREATE INDEX IF NOT EXISTS ix_discoveries_project_origin_cat
     ON discoveries(project_id, origin_category_id, media_id)
     WHERE origin_category_id IS NOT NULL;
 
+-- Category fallback for discoveries missing origin_category_id:
+-- resolve via source_value (= categories.title, typically 'Category:<Name>').
+CREATE INDEX IF NOT EXISTS ix_discoveries_project_category_source_value
+    ON discoveries(project_id, source_value, media_id)
+    WHERE source_type = 'category'
+      AND origin_category_id IS NULL
+      AND source_value IS NOT NULL
+      AND trim(source_value) <> '';
+
+CREATE INDEX IF NOT EXISTS ix_categories_title
+    ON categories(title);
+
+CREATE INDEX IF NOT EXISTS ix_categories_normalized_title
+    ON categories(normalized_title);
+
 CREATE INDEX IF NOT EXISTS ix_discoveries_project_parent
     ON discoveries(project_id, parent_media_id, media_id)
     WHERE parent_media_id IS NOT NULL;
@@ -39,5 +54,5 @@ CREATE INDEX IF NOT EXISTS ix_media_current_uploader
     ON media(current_uploader COLLATE NOCASE)
     WHERE current_uploader IS NOT NULL AND current_uploader<>'';
 
-INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES(101, datetime('now'));
+INSERT OR IGNORE INTO review_schema_migrations(version, applied_at) VALUES(101, datetime('now'));
 COMMIT;

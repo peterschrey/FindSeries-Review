@@ -120,6 +120,20 @@ Spike-Kommando (reproduzierbar):
 
 Vor FRV-11 zusätzlich: kurzer Node/better-sqlite3-Spike (RO-Counts, busy_timeout) – nur wenn Gegengründe gegen better-sqlite3 auftauchen, Treiberwahl dokumentiert ändern.
 
+### Mini-Spike Ergebnis (2026-08-14)
+
+Skript: `review/spike-node-sqlite/` (Node 22 + Fastify 5 + better-sqlite3 11).
+
+Gegen DB-Kopie `findseries-v5-phase1-gate.db` (read-only):
+
+- `busy_timeout=5000`, `query_only=ON`
+- Projekt 7 (`Cat_Dentistry`) gelesen
+- parametrisierter Media-/project_media-Count OK (`media=305212`)
+- Fastify Health-Endpoint auf `127.0.0.1` OK
+- Verbindungen sauber geschlossen
+
+**Entscheidung:** better-sqlite3 bleibt verbindlicher P0-Treiber. Keine Treiberfrage offen.
+
 ## Nicht in dieser Architektur
 
 - Cloud-Embeddings

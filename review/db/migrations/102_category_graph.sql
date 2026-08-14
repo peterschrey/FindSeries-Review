@@ -17,5 +17,5 @@ CREATE TABLE IF NOT EXISTS project_category_closure (
 CREATE INDEX IF NOT EXISTS ix_project_category_closure_desc
     ON project_category_closure(project_id, descendant_id, ancestor_id);
 
-INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES(102, datetime('now'));
+INSERT OR IGNORE INTO review_schema_migrations(version, applied_at) VALUES(102, datetime('now'));
 COMMIT;

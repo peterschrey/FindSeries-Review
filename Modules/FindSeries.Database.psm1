@@ -555,7 +555,8 @@ UPDATE media_review_history SET media_id=$SurvivorId WHERE media_id=$DuplicateId
     if (Test-FsSqliteTableExists -SqlitePath $SqlitePath -DatabasePath $DatabasePath -TableName 'media_review_status') {
         [void]$parts.Add(@"
 -- Project-scoped current review status: transfer/merge with safety priority.
--- Priority: keep(4) > unsure(3) > reject(2) > unreviewed(1)
+-- Different status: keep(4) > unsure(3) > reject(2) > unreviewed(1)
+-- Same status: newer complete current row wins (changed_at + metadata together).
 INSERT INTO media_review_status(project_id,media_id,status,changed_at,changed_by,source,action,batch_id)
 SELECT project_id,$SurvivorId,status,changed_at,changed_by,source,action,batch_id
 FROM media_review_status WHERE media_id=$DuplicateId
@@ -563,7 +564,12 @@ ON CONFLICT(project_id,media_id) DO UPDATE SET
  status=CASE
    WHEN CASE excluded.status WHEN 'keep' THEN 4 WHEN 'unsure' THEN 3 WHEN 'reject' THEN 2 WHEN 'unreviewed' THEN 1 ELSE 0 END
       > CASE media_review_status.status WHEN 'keep' THEN 4 WHEN 'unsure' THEN 3 WHEN 'reject' THEN 2 WHEN 'unreviewed' THEN 1 ELSE 0 END
-   THEN excluded.status ELSE media_review_status.status END,
+   THEN excluded.status
+   WHEN CASE excluded.status WHEN 'keep' THEN 4 WHEN 'unsure' THEN 3 WHEN 'reject' THEN 2 WHEN 'unreviewed' THEN 1 ELSE 0 END
+      < CASE media_review_status.status WHEN 'keep' THEN 4 WHEN 'unsure' THEN 3 WHEN 'reject' THEN 2 WHEN 'unreviewed' THEN 1 ELSE 0 END
+   THEN media_review_status.status
+   WHEN excluded.changed_at > media_review_status.changed_at THEN excluded.status
+   ELSE media_review_status.status END,
  changed_at=CASE
    WHEN CASE excluded.status WHEN 'keep' THEN 4 WHEN 'unsure' THEN 3 WHEN 'reject' THEN 2 WHEN 'unreviewed' THEN 1 ELSE 0 END
       > CASE media_review_status.status WHEN 'keep' THEN 4 WHEN 'unsure' THEN 3 WHEN 'reject' THEN 2 WHEN 'unreviewed' THEN 1 ELSE 0 END
@@ -571,23 +577,44 @@ ON CONFLICT(project_id,media_id) DO UPDATE SET
    WHEN CASE excluded.status WHEN 'keep' THEN 4 WHEN 'unsure' THEN 3 WHEN 'reject' THEN 2 WHEN 'unreviewed' THEN 1 ELSE 0 END
       < CASE media_review_status.status WHEN 'keep' THEN 4 WHEN 'unsure' THEN 3 WHEN 'reject' THEN 2 WHEN 'unreviewed' THEN 1 ELSE 0 END
    THEN media_review_status.changed_at
-   ELSE MAX(media_review_status.changed_at,excluded.changed_at) END,
+   WHEN excluded.changed_at > media_review_status.changed_at THEN excluded.changed_at
+   ELSE media_review_status.changed_at END,
  changed_by=CASE
    WHEN CASE excluded.status WHEN 'keep' THEN 4 WHEN 'unsure' THEN 3 WHEN 'reject' THEN 2 WHEN 'unreviewed' THEN 1 ELSE 0 END
       > CASE media_review_status.status WHEN 'keep' THEN 4 WHEN 'unsure' THEN 3 WHEN 'reject' THEN 2 WHEN 'unreviewed' THEN 1 ELSE 0 END
-   THEN excluded.changed_by ELSE media_review_status.changed_by END,
+   THEN excluded.changed_by
+   WHEN CASE excluded.status WHEN 'keep' THEN 4 WHEN 'unsure' THEN 3 WHEN 'reject' THEN 2 WHEN 'unreviewed' THEN 1 ELSE 0 END
+      < CASE media_review_status.status WHEN 'keep' THEN 4 WHEN 'unsure' THEN 3 WHEN 'reject' THEN 2 WHEN 'unreviewed' THEN 1 ELSE 0 END
+   THEN media_review_status.changed_by
+   WHEN excluded.changed_at > media_review_status.changed_at THEN excluded.changed_by
+   ELSE media_review_status.changed_by END,
  source=CASE
    WHEN CASE excluded.status WHEN 'keep' THEN 4 WHEN 'unsure' THEN 3 WHEN 'reject' THEN 2 WHEN 'unreviewed' THEN 1 ELSE 0 END
       > CASE media_review_status.status WHEN 'keep' THEN 4 WHEN 'unsure' THEN 3 WHEN 'reject' THEN 2 WHEN 'unreviewed' THEN 1 ELSE 0 END
-   THEN excluded.source ELSE media_review_status.source END,
+   THEN excluded.source
+   WHEN CASE excluded.status WHEN 'keep' THEN 4 WHEN 'unsure' THEN 3 WHEN 'reject' THEN 2 WHEN 'unreviewed' THEN 1 ELSE 0 END
+      < CASE media_review_status.status WHEN 'keep' THEN 4 WHEN 'unsure' THEN 3 WHEN 'reject' THEN 2 WHEN 'unreviewed' THEN 1 ELSE 0 END
+   THEN media_review_status.source
+   WHEN excluded.changed_at > media_review_status.changed_at THEN excluded.source
+   ELSE media_review_status.source END,
  action=CASE
    WHEN CASE excluded.status WHEN 'keep' THEN 4 WHEN 'unsure' THEN 3 WHEN 'reject' THEN 2 WHEN 'unreviewed' THEN 1 ELSE 0 END
       > CASE media_review_status.status WHEN 'keep' THEN 4 WHEN 'unsure' THEN 3 WHEN 'reject' THEN 2 WHEN 'unreviewed' THEN 1 ELSE 0 END
-   THEN excluded.action ELSE media_review_status.action END,
+   THEN excluded.action
+   WHEN CASE excluded.status WHEN 'keep' THEN 4 WHEN 'unsure' THEN 3 WHEN 'reject' THEN 2 WHEN 'unreviewed' THEN 1 ELSE 0 END
+      < CASE media_review_status.status WHEN 'keep' THEN 4 WHEN 'unsure' THEN 3 WHEN 'reject' THEN 2 WHEN 'unreviewed' THEN 1 ELSE 0 END
+   THEN media_review_status.action
+   WHEN excluded.changed_at > media_review_status.changed_at THEN excluded.action
+   ELSE media_review_status.action END,
  batch_id=CASE
    WHEN CASE excluded.status WHEN 'keep' THEN 4 WHEN 'unsure' THEN 3 WHEN 'reject' THEN 2 WHEN 'unreviewed' THEN 1 ELSE 0 END
       > CASE media_review_status.status WHEN 'keep' THEN 4 WHEN 'unsure' THEN 3 WHEN 'reject' THEN 2 WHEN 'unreviewed' THEN 1 ELSE 0 END
-   THEN excluded.batch_id ELSE media_review_status.batch_id END;
+   THEN excluded.batch_id
+   WHEN CASE excluded.status WHEN 'keep' THEN 4 WHEN 'unsure' THEN 3 WHEN 'reject' THEN 2 WHEN 'unreviewed' THEN 1 ELSE 0 END
+      < CASE media_review_status.status WHEN 'keep' THEN 4 WHEN 'unsure' THEN 3 WHEN 'reject' THEN 2 WHEN 'unreviewed' THEN 1 ELSE 0 END
+   THEN media_review_status.batch_id
+   WHEN excluded.changed_at > media_review_status.changed_at THEN excluded.batch_id
+   ELSE media_review_status.batch_id END;
 DELETE FROM media_review_status WHERE media_id=$DuplicateId;
 "@)
     }

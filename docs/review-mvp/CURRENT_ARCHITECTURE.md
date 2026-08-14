@@ -44,7 +44,8 @@ Module: `FindSeries.Core`, `.Configuration`, `.Database`, `.Search`, `.Api`, `.R
 
 ## SQLite-Schema (Ist)
 
-Versionen in `schema_migrations` (u. a. 1, 2, 11–13, 30, 32, 34, 42, 44, 52, 62, 65). Journal: **WAL**.
+Versionen in Core `schema_migrations` (u. a. 1, 2, 11–13, 30, 32, 34, 42, 44, 52, 62, 65).  
+Review-MVP-Versionen **100–104** liegen in eigener Tabelle `review_schema_migrations`. Journal: **WAL**.
 
 Kernentitäten:
 
@@ -130,7 +131,7 @@ Neue Review-Status-Indizes erst nach konkreten Queries (EXPLAIN) anlegen.
 
 ## Implikationen für den MVP
 
-1. Schema-Erweiterungen nur als neue `schema_migrations`-Versionen.
+1. Schema-Erweiterungen Core nur als neue Core-`schema_migrations`-Versionen; Review nur über `review_schema_migrations`.
 2. Provenienz aus `discoveries` ableiten; fehlende Typen nicht erfinden.
 3. Kategoriegraph aus `project_categories.parent_category_id`.
 4. Serie/Uploader aus `media` + Discovery-Typen (`time-series`, `filename-series`, `uploader-neighbour`, …).

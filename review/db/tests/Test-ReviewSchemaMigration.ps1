@@ -22,20 +22,27 @@ function Invoke-Sql([string]$Db, [string]$Sql) {
 Write-Host "DB: $DatabasePath" -ForegroundColor Cyan
 $before = Invoke-Sql $DatabasePath "SELECT (SELECT COUNT(*) FROM projects),(SELECT COUNT(*) FROM media),(SELECT COUNT(*) FROM project_media),(SELECT COUNT(*) FROM schema_migrations);"
 Write-Host "before counts: $before"
+$coreMigBefore = Invoke-Sql $DatabasePath "SELECT group_concat(version) FROM (SELECT version FROM schema_migrations ORDER BY version);"
 
 # Apply only migration 100 twice for FRV-5 idempotency
 1..2 | ForEach-Object {
     $null = Invoke-Sql $DatabasePath ".read `"$($MigrationPath.Replace('\','/'))`""
 }
 
-$after = Invoke-Sql $DatabasePath "SELECT (SELECT COUNT(*) FROM projects),(SELECT COUNT(*) FROM media),(SELECT COUNT(*) FROM project_media),(SELECT COUNT(*) FROM schema_migrations WHERE version=100);"
+$after = Invoke-Sql $DatabasePath "SELECT (SELECT COUNT(*) FROM projects),(SELECT COUNT(*) FROM media),(SELECT COUNT(*) FROM project_media),(SELECT COUNT(*) FROM review_schema_migrations WHERE version=100);"
 Write-Host "after counts: $after"
 $beforeCore = (($before -split '\|')[0..2] -join '|')
 $afterCore = (($after -split '\|')[0..2] -join '|')
 if ($beforeCore -cne $afterCore) {
     throw "core table counts changed by migration: $beforeCore -> $afterCore"
 }
-if (($after -split '\|')[3] -ne '1') { throw 'schema_migrations version 100 missing' }
+if (($after -split '\|')[3] -ne '1') { throw 'review_schema_migrations version 100 missing' }
+$coreLeak = Invoke-Sql $DatabasePath "SELECT COUNT(*) FROM schema_migrations WHERE version=100;"
+if (($coreLeak | Select-Object -Last 1) -ne '0') { throw 'Review version 100 leaked into core schema_migrations' }
+$coreMigAfter = Invoke-Sql $DatabasePath "SELECT group_concat(version) FROM (SELECT version FROM schema_migrations ORDER BY version);"
+if (($coreMigBefore | Select-Object -Last 1) -cne ($coreMigAfter | Select-Object -Last 1)) {
+    throw "core schema_migrations changed: $coreMigBefore -> $coreMigAfter"
+}
 
 $batch = [guid]::NewGuid().ToString('N')
 Invoke-Sql $DatabasePath @"

@@ -1,0 +1,12 @@
+{
+  "name": "findseries-review-spike-node-sqlite",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "spike": "node spike.mjs"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.8.1",
+    "fastify": "^5.2.1"
+  }
+}

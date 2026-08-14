@@ -143,7 +143,54 @@ Produktive DB (nur Quelle für Online-Backup / read-only Checks):
 
 ---
 
-## Abschluss
+## Abschluss (erste Korrekturschleife)
 
-Synthetische Tests PASS; Real-Verify PASS; Real-DB-Migration PASS.  
-FRV-11 **nicht** gestartet.
+Synthetische Tests PASS; Real-Verify PASS; Real-DB-Migration PASS.
+
+---
+
+## Gate vor FRV-11 (2026-08-14)
+
+### 1. `review_schema_migrations`
+
+**Befund:** Review-Versionen in Core `schema_migrations` → Kollisionsrisiko.  
+**Änderung:** eigene Tabelle; Runner prüft nur dort; Core-Fingerprint unverändert.  
+**Test:** frische Kopie `findseries-v5-phase1-gate.db`, 2× Apply.  
+**Ergebnis:** PASS (`100–104` nur in Review-Tabelle; Leak=0).
+
+### 2. Category-Fallback
+
+**Befund:** 62 % null `origin_category_id`.  
+**Messung:** 133 917 null-Zeilen; 133 488 eindeutig via `normalized_title`; 0 mehrdeutig; 429 unresolved; 40 486 davon im Projektbaum.  
+**Strategie:** origin zuerst; sonst `lower(source_value)=normalized_title` + `project_categories`; keine Erfindung. Indizes in Migration 101.  
+**Test:** `Test-CategoryFallbackReal.ps1` – 5 Unterbäume, Union, EXPLAIN; Subtree-Queries ~0,75 s.  
+**Ergebnis:** PASS – Semantik in `CATEGORY_GRAPH.md`.
+
+### 3. Provenance Unknown
+
+**Befund:** `$family` vor Zuweisung im else.  
+**Änderung:** if/else mit explizitem `unknown.Add`.  
+**Ergebnis:** PASS (keine Unknowns im Sample; Ausgabe eindeutig).
+
+### 4. Merge gleicher Status
+
+**Befund:** `changed_at=MAX` bei gemischten Metadaten.  
+**Änderung:** bei gleichem Status gewinnt die zeitlich neuere **komplette** Current-Zeile.  
+**Test:** same-newer-dup / same-newer-surv.  
+**Ergebnis:** PASS (44 Asserts gesamt).
+
+### 5. Series Assert / portable Pfade
+
+**Änderung:** `seriesNo < 10` → throw; Legacy-User-Pfad entfernt.  
+**Ergebnis:** PASS (10 Serien).
+
+### 6. Node Spike
+
+**Ergebnis:** better-sqlite3 + Fastify RO-Spike PASS → Treiber verbindlich.
+
+---
+
+## Abschluss Gate
+
+Alle Gate-Punkte PASS.  
+**READY FOR FRV-11** (nicht in diesem Commit gestartet).

@@ -69,7 +69,12 @@ foreach($line in $rows){
     if($p.Count -lt 6){ continue }
     $mid=[int]$p[0]; $st=$p[1]; $sv=$p[2]; $qt=$p[3]; $oid=$p[4]; $parentMediaId=$p[5]
     [void]$media.Add($mid)
-    $family = if($typeMap.ContainsKey($st)){ $typeMap[$st] } else { 'unknown'; if($family -eq 'unknown'){ [void]$unknown.Add($st) } }
+    if($typeMap.ContainsKey($st)){
+        $family = $typeMap[$st]
+    } else {
+        $family = 'unknown'
+        [void]$unknown.Add($st)
+    }
     if(-not $byMedia.ContainsKey($mid)){ $byMedia[$mid]=New-Object 'System.Collections.Generic.HashSet[string]' }
     [void]$byMedia[$mid].Add($family)
 

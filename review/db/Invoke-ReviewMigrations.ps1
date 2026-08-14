@@ -1,4 +1,5 @@
 # Applies Review-MVP migrations 100–104 idempotently on a DB copy.
+# Review versions are tracked in review_schema_migrations only (never core schema_migrations).
 [CmdletBinding()]
 param(
     [Parameter(Mandatory=$true)][string]$DatabasePath,
@@ -46,6 +47,10 @@ SELECT
 "@) -join ''
 }
 
+function Get-CoreMigrationFingerprint([string]$Database){
+    (Invoke-SqliteChecked $Database "SELECT group_concat(version) FROM (SELECT version FROM schema_migrations ORDER BY version);") -join ''
+}
+
 function New-FsSqliteBackup {
     param([string]$SourceDb,[string]$DestDb)
     $destDir = Split-Path -Parent $DestDb
@@ -53,8 +58,6 @@ function New-FsSqliteBackup {
         New-Item -ItemType Directory -Path $destDir -Force | Out-Null
     }
     if(Test-Path -LiteralPath $DestDb){Remove-Item -LiteralPath $DestDb -Force}
-    # Consistent online backup; do NOT copy -wal/-shm manually.
-    # On Windows, paths like C:/... must not be the optional DB token — use explicit `main`.
     $destUnix = $DestDb.Replace('\','/')
     $null = Invoke-SqliteChecked $SourceDb ".backup main `"$destUnix`""
     $qc = (Invoke-SqliteChecked $DestDb 'PRAGMA quick_check;') -join ''
@@ -73,7 +76,9 @@ if($Backup){
 }
 
 $before=Get-CoreCounts $DatabasePath
+$coreMigBefore=Get-CoreMigrationFingerprint $DatabasePath
 Write-Host "Counts before: $before"
+Write-Host "Core schema_migrations before: $coreMigBefore"
 if(-not $SkipIntegrity){
     $qc=(Invoke-SqliteChecked $DatabasePath 'PRAGMA quick_check;') -join ''
     if($qc.Trim() -ne 'ok'){throw "quick_check failed before migration: $qc"}
@@ -91,26 +96,33 @@ foreach($f in $files){
 }
 
 $after=Get-CoreCounts $DatabasePath
+$coreMigAfter=Get-CoreMigrationFingerprint $DatabasePath
 Write-Host "Counts after: $after"
+Write-Host "Core schema_migrations after: $coreMigAfter"
 if($before -cne $after){throw "core counts changed: $before -> $after"}
+if($coreMigBefore -cne $coreMigAfter){throw "core schema_migrations changed by Review migrations: $coreMigBefore -> $coreMigAfter"}
 
-$applied=@(Invoke-SqliteChecked $DatabasePath "SELECT version FROM schema_migrations WHERE version IN (100,101,102,103,104) ORDER BY version;")
+$leaked=@(Invoke-SqliteChecked $DatabasePath "SELECT version FROM schema_migrations WHERE version IN (100,101,102,103,104) ORDER BY version;")
+if(@($leaked | Where-Object { $_ -and $_.ToString().Trim() -ne '' }).Count -gt 0){
+    throw ("Review versions leaked into core schema_migrations: {0}" -f ($leaked -join ','))
+}
+
+$applied=@(Invoke-SqliteChecked $DatabasePath "SELECT version FROM review_schema_migrations WHERE version IN (100,101,102,103,104) ORDER BY version;")
 foreach($v in $versions){
-    if($applied -notcontains [string]$v){throw "missing schema_migrations version $v"}
+    if($applied -notcontains [string]$v){throw "missing review_schema_migrations version $v"}
 }
 if(-not $SkipIntegrity){
     $qc2=(Invoke-SqliteChecked $DatabasePath 'PRAGMA quick_check;') -join ''
     if($qc2.Trim() -ne 'ok'){throw "quick_check failed after migration: $qc2"}
 }
 Write-Host ("Migration timings: {0}" -f ($timings -join '; ')) -ForegroundColor DarkGray
-Write-Host "Migration OK. Versions:`n$($applied -join ', ')" -ForegroundColor Green
+Write-Host "Migration OK. Review versions:`n$($applied -join ', ')" -ForegroundColor Green
 
 <#
 Rollback (supported):
 1. Stop writers.
-2. Restore from the SQLite .backup file created with -Backup (copy backup over target DB;
-   remove stale -wal/-shm of the target if present).
+2. Restore from the SQLite .backup file created with -Backup.
 3. Prefer backup-restore over SQL DROP scripts.
 
-SQL rollback file ROLLBACK_100_104.sql is best-effort only and warns before destructive drops.
+SQL rollback file ROLLBACK_100_104.sql is best-effort only.
 #>

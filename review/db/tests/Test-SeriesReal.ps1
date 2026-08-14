@@ -223,5 +223,5 @@ ORDER BY m.title LIMIT 20;
 
 Set-Content -LiteralPath $OutFile -Value $lines -Encoding utf8
 Write-Host ("Wrote {0} (series documented: {1})" -f $OutFile,$seriesNo)
-if($seriesNo -lt 10){ Write-Warning ("Fewer than 10 series documented ({0})." -f $seriesNo) }
+if($seriesNo -lt 10){ throw ("FRV-8 requires >=10 real series documented, got {0}" -f $seriesNo) }
 Write-Host 'PASS series real sampling (see report)' -ForegroundColor Green

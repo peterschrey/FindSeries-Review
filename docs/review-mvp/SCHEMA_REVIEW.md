@@ -63,6 +63,6 @@ COALESCE(mrs.status, 'unreviewed') AS review_status
 
 ## Migration
 
-- Version **100** in `schema_migrations`
+- Version **100** in `review_schema_migrations` (nie Core `schema_migrations`)
 - Idempotent (`IF NOT EXISTS` / `INSERT OR IGNORE`)
 - Transaktional (`BEGIN IMMEDIATE` … `COMMIT`)

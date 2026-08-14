@@ -26,5 +26,5 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_media_series_keys_one_primary
     ON media_series_keys(project_id, media_id)
     WHERE is_primary = 1;
 
-INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES(103, datetime('now'));
+INSERT OR IGNORE INTO review_schema_migrations(version, applied_at) VALUES(103, datetime('now'));
 COMMIT;

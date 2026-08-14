@@ -56,12 +56,6 @@ $defaultDump = Join-Path $RepoRoot 'review\db\fixtures\schema.sql.clean'
 if(Test-Path $defaultDump){ Copy-Item $defaultDump $schemaClean -Force }
 
 if(-not(Test-Path $schemaClean)){
-    # Bootstrap from existing temp if available
-    $legacy = 'C:\Users\pschr\tmp\findseries-review-schema-copy\schema.sql.clean'
-    if(Test-Path $legacy){ Copy-Item $legacy $schemaClean -Force }
-}
-
-if(-not(Test-Path $schemaClean)){
     throw "No schema fixture. Place schema.sql.clean under review/db/fixtures/."
 }
 
@@ -128,5 +122,45 @@ foreach($c in $cases){
     Assert-True ([string]::IsNullOrWhiteSpace(($fk -join ''))) "$($c.Name) fk: $fk"
     Write-Host "PASS: $($c.Name)"
 }
+
+# Same-status metadata consistency: newer complete row wins
+function Get-StatusMeta([string]$Db,[int]$Project,[int]$Media){
+    $r = Invoke-Sql $Db "SELECT status||'|'||changed_at||'|'||COALESCE(source,'')||'|'||COALESCE(action,'')||'|'||COALESCE(batch_id,'') FROM media_review_status WHERE project_id=$Project AND media_id=$Media;"
+    return ($r | Select-Object -Last 1)
+}
+
+$dbMeta = Join-Path $WorkDir 'case-same-newer-dup.db'
+New-BaseDb $dbMeta -WithReview
+Invoke-Sql $dbMeta @"
+INSERT INTO media_review_status(project_id,media_id,status,changed_at,changed_by,source,action,batch_id)
+VALUES(1,10,'keep','2026-01-01T00:00:00.000Z','u','ui','old','batch-old');
+INSERT INTO media_review_status(project_id,media_id,status,changed_at,changed_by,source,action,batch_id)
+VALUES(1,20,'keep','2026-06-01T00:00:00.000Z','v','api','new','batch-new');
+INSERT INTO media_review_history(project_id,media_id,old_status,new_status,changed_at,source,action,batch_id)
+VALUES(1,10,'unreviewed','keep','2026-01-01T00:00:00.000Z','ui','old','batch-old'),
+      (1,20,'unreviewed','keep','2026-06-01T00:00:00.000Z','api','new','batch-new');
+"@ | Out-Null
+$hBefore = [int](HistCount $dbMeta)
+Assert-True (Merge-FsMediaRows -SqlitePath $sqlite -DatabasePath $dbMeta -SurvivorId 10 -DuplicateId 20 -Reason 'test') 'merge same-newer-dup'
+$meta = Get-StatusMeta $dbMeta 1 10
+Assert-True ($meta -eq 'keep|2026-06-01T00:00:00.000Z|api|new|batch-new') "same-newer-dup meta: $meta"
+Assert-True (([int](HistCount $dbMeta)) -eq $hBefore) 'same-newer-dup history lost'
+Write-Host 'PASS: same-newer-dup'
+
+$dbMeta2 = Join-Path $WorkDir 'case-same-newer-surv.db'
+New-BaseDb $dbMeta2 -WithReview
+Invoke-Sql $dbMeta2 @"
+INSERT INTO media_review_status(project_id,media_id,status,changed_at,changed_by,source,action,batch_id)
+VALUES(1,10,'reject','2026-07-01T00:00:00.000Z','s','ui','surv','batch-surv');
+INSERT INTO media_review_status(project_id,media_id,status,changed_at,changed_by,source,action,batch_id)
+VALUES(1,20,'reject','2026-02-01T00:00:00.000Z','d','api','dup','batch-dup');
+INSERT INTO media_review_history(project_id,media_id,old_status,new_status,changed_at,source,action,batch_id)
+VALUES(1,10,'unreviewed','reject','2026-07-01T00:00:00.000Z','ui','surv','batch-surv'),
+      (1,20,'unreviewed','reject','2026-02-01T00:00:00.000Z','api','dup','batch-dup');
+"@ | Out-Null
+Assert-True (Merge-FsMediaRows -SqlitePath $sqlite -DatabasePath $dbMeta2 -SurvivorId 10 -DuplicateId 20 -Reason 'test') 'merge same-newer-surv'
+$meta2 = Get-StatusMeta $dbMeta2 1 10
+Assert-True ($meta2 -eq 'reject|2026-07-01T00:00:00.000Z|ui|surv|batch-surv') "same-newer-surv meta: $meta2"
+Write-Host 'PASS: same-newer-surv'
 
 Write-Host "PASS Merge review integration ($pass asserts)" -ForegroundColor Green

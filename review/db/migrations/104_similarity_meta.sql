@@ -49,5 +49,5 @@ CREATE INDEX IF NOT EXISTS ix_media_phash_hash
 CREATE INDEX IF NOT EXISTS ix_media_phash_status
     ON media_phash(algorithm, status, media_id);
 
-INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES(104, datetime('now'));
+INSERT OR IGNORE INTO review_schema_migrations(version, applied_at) VALUES(104, datetime('now'));
 COMMIT;

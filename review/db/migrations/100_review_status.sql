@@ -5,6 +5,12 @@
 PRAGMA foreign_keys=ON;
 BEGIN IMMEDIATE;
 
+-- Review subsystem versioning (never use core schema_migrations for Review versions).
+CREATE TABLE IF NOT EXISTS review_schema_migrations (
+    version INTEGER PRIMARY KEY,
+    applied_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS media_review_status (
     project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     media_id INTEGER NOT NULL REFERENCES media(id) ON DELETE CASCADE,
@@ -68,6 +74,6 @@ CREATE TABLE IF NOT EXISTS media_review_batches (
 CREATE INDEX IF NOT EXISTS ix_media_review_batches_project_time
     ON media_review_batches(project_id, created_at DESC);
 
-INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES(100, datetime('now'));
+INSERT OR IGNORE INTO review_schema_migrations(version, applied_at) VALUES(100, datetime('now'));
 
 COMMIT;

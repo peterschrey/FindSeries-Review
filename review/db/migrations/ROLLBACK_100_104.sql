@@ -20,9 +20,14 @@ DROP TABLE IF EXISTS media_review_status;
 -- Indexes added on existing core tables by migrations 101/102
 DROP INDEX IF EXISTS ix_discoveries_project_source_media;
 DROP INDEX IF EXISTS ix_discoveries_project_origin_cat;
+DROP INDEX IF EXISTS ix_discoveries_project_category_source_value;
 DROP INDEX IF EXISTS ix_discoveries_project_parent;
 DROP INDEX IF EXISTS ix_media_current_uploader;
+DROP INDEX IF EXISTS ix_categories_title;
+DROP INDEX IF EXISTS ix_categories_normalized_title;
 DROP INDEX IF EXISTS ix_project_categories_parent;
 
-DELETE FROM schema_migrations WHERE version IN (100,101,102,103,104);
+DELETE FROM review_schema_migrations WHERE version IN (100,101,102,103,104);
+DROP TABLE IF EXISTS review_schema_migrations;
+-- Never touch core schema_migrations for Review versions.
 COMMIT;
