@@ -24,13 +24,8 @@ export function LeftNav({
               className={`facet ${active ? 'active' : ''}`}
               onClick={() =>
                 dispatch({
-                  type: 'set_drilldown',
-                  drilldown: {
-                    kind: 'sourceType',
-                    key: p.sourceType,
-                    label: p.sourceType,
-                    patch: { sourceTypes: [p.sourceType] },
-                  },
+                  type: 'set_source_types',
+                  sourceTypes: active ? undefined : [p.sourceType],
                 })
               }
             >
@@ -45,20 +40,18 @@ export function LeftNav({
         {(facets?.uploaders ?? []).slice(0, 20).map((u, i) => {
           const label = u.uploader ?? '(ohne Uploader)';
           const key = u.uploader ?? '__empty__';
+          const active =
+            state.uploader === u.uploader ||
+            (u.uploader == null && state.uploader === null);
           return (
             <button
               key={key + i}
               type="button"
-              className="facet"
+              className={`facet ${active ? 'active' : ''}`}
               onClick={() =>
                 dispatch({
-                  type: 'set_drilldown',
-                  drilldown: {
-                    kind: 'uploader',
-                    key,
-                    label,
-                    patch: { uploader: u.uploader },
-                  },
+                  type: 'set_uploader',
+                  uploader: active ? undefined : u.uploader,
                 })
               }
             >

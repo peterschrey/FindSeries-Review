@@ -1,0 +1,29 @@
+{
+  "shots": [
+    {
+      "name": "phase4-ui-1920x1080.png",
+      "w": 1920,
+      "h": 1080,
+      "loadMs": 7609,
+      "domThumbs": 106,
+      "title": "FindSeries Review",
+      "overview": 3,
+      "pathOut": "C:\\Users\\pschr\\cursor3-repos\\FindSeries-Review\\docs\\review-mvp\\verification\\phase4-ui-1920x1080.png"
+    },
+    {
+      "name": "phase4-ui-2560x1440.png",
+      "w": 2560,
+      "h": 1440,
+      "loadMs": 2463,
+      "domThumbs": 106,
+      "title": "FindSeries Review",
+      "overview": 3,
+      "pathOut": "C:\\Users\\pschr\\cursor3-repos\\FindSeries-Review\\docs\\review-mvp\\verification\\phase4-ui-2560x1440.png"
+    }
+  ],
+  "scroll": {
+    "before": 106,
+    "after": 106
+  },
+  "note": "DOM thumbs stay near viewport buffer; layout vs docs/review-mvp/prototypes/review-mvp.html"
+}

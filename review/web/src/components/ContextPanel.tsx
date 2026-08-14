@@ -1,5 +1,5 @@
 import type { Dispatch } from 'react';
-import type { MediaCard } from '@findseries/review-shared';
+import type { BulkResponse, MediaCard, ReviewStatus } from '@findseries/review-shared';
 import type { ReviewUiAction, ReviewUiState } from '../state/reviewState';
 import { ThumbImage } from './ThumbImage';
 
@@ -7,12 +7,19 @@ export function ContextPanel({
   state,
   dispatch,
   items,
+  busy,
+  onStatus,
+  lastBulk,
 }: {
   state: ReviewUiState;
   dispatch: Dispatch<ReviewUiAction>;
   items: MediaCard[];
+  busy: boolean;
+  onStatus: (target: ReviewStatus | 'reset') => void;
+  lastBulk: BulkResponse | null;
 }) {
-  const selected = items.filter((i) => state.selectedIds.includes(i.mediaId));
+  const selectedSet = new Set(state.selectedIds);
+  const selected = items.filter((i) => selectedSet.has(i.mediaId));
   const primary =
     selected[0] ??
     items.find((i) => i.mediaId === state.focusMediaId) ??
@@ -22,6 +29,8 @@ export function ContextPanel({
   if (state.focusMediaId && selected.length === 0) mode = 'Fokus aktiv';
   else if (selected.length === 1) mode = 'Einzelbild';
   else if (selected.length > 1) mode = `Mehrfachauswahl (${selected.length})`;
+
+  const canAct = selected.length > 0 && !busy;
 
   return (
     <aside className="right">
@@ -35,7 +44,7 @@ export function ContextPanel({
               className="btn"
               onClick={() => dispatch({ type: 'set_focus', mediaId: null })}
             >
-              Fokus aufheben (vorläufig)
+              Fokus aufheben
             </button>
           </div>
         )}
@@ -44,22 +53,48 @@ export function ContextPanel({
       <div className="section">
         <h3>Aktionen</h3>
         <div className="actionrow">
-          <button type="button" className="action keep" disabled title="FRV-22/23">
+          <button
+            type="button"
+            className="action keep"
+            disabled={!canAct}
+            onClick={() => onStatus('keep')}
+          >
             K Behalten
           </button>
-          <button type="button" className="action reject" disabled title="FRV-22/23">
+          <button
+            type="button"
+            className="action reject"
+            disabled={!canAct}
+            onClick={() => onStatus('reject')}
+          >
             R Löschen
           </button>
-          <button type="button" className="action unsure" disabled title="FRV-22/23">
+          <button
+            type="button"
+            className="action unsure"
+            disabled={!canAct}
+            onClick={() => onStatus('unsure')}
+          >
             U Unsicher
           </button>
-          <button type="button" className="action" disabled title="FRV-22/23">
+          <button
+            type="button"
+            className="action"
+            disabled={!canAct}
+            onClick={() => onStatus('reset')}
+          >
             N Unbewertet
           </button>
         </div>
         <div className="helper" style={{ marginTop: 8 }}>
-          Hotkeys und Bulk folgen in FRV-22/23. Click = Auswahl, Doppelklick = Fokus.
+          Behalten ist standardmäßig geschützt. Kein UI-Schalter für protectKeep=false.
         </div>
+        {lastBulk && (
+          <div className="helper" style={{ marginTop: 8 }} data-testid="bulk-summary">
+            Ziel {lastBulk.mediaCount} · geändert {lastBulk.changedCount} · geschützt{' '}
+            {lastBulk.protectedCount} · übersprungen {lastBulk.skippedCount}
+          </div>
+        )}
       </div>
 
       {primary && (

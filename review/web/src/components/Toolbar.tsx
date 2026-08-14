@@ -1,4 +1,4 @@
-import type { Dispatch } from 'react';
+import { useEffect, useState, type Dispatch } from 'react';
 import type { GroupBy, ReviewStatus, SortField } from '@findseries/review-shared';
 import {
   type ReviewUiAction,
@@ -13,22 +13,58 @@ const STATUS_CHIPS: { status: ReviewStatus; label: string; color: string }[] = [
   { status: 'reject', label: 'Löschen', color: 'var(--reject)' },
 ];
 
+const SEARCH_DEBOUNCE_MS = 250;
+
 export function Toolbar({
   state,
   dispatch,
-  onSearchDebounced,
+  projects,
 }: {
   state: ReviewUiState;
   dispatch: Dispatch<ReviewUiAction>;
-  onSearchDebounced: (q: string) => void;
+  projects: Array<{ id: number; name: string; slug: string | null }>;
 }) {
+  const [draftQ, setDraftQ] = useState(state.q);
+
+  // Keep visible input in sync with external state (reset, breadcrumb, restore)
+  useEffect(() => {
+    setDraftQ(state.q);
+  }, [state.q, state.filterEpoch]);
+
+  useEffect(() => {
+    if (draftQ === state.q) return;
+    const t = window.setTimeout(() => {
+      dispatch({ type: 'set_q', q: draftQ });
+    }, SEARCH_DEBOUNCE_MS);
+    return () => window.clearTimeout(t);
+  }, [draftQ, state.q, dispatch]);
+
   return (
     <div className="commandbar">
+      <select
+        className="select"
+        value={state.projectId}
+        onChange={(e) =>
+          dispatch({ type: 'set_project', projectId: Number(e.target.value) })
+        }
+        aria-label="Projekt"
+      >
+        {projects.length === 0 && (
+          <option value={state.projectId}>Projekt {state.projectId}</option>
+        )}
+        {projects.map((p) => (
+          <option key={p.id} value={p.id}>
+            {p.name}
+            {p.slug ? ` (${p.slug})` : ''}
+          </option>
+        ))}
+      </select>
       <input
         className="searchbox"
-        defaultValue={state.q}
+        value={draftQ}
         placeholder="Suchen: Titel, Uploader …"
-        onChange={(e) => onSearchDebounced(e.target.value)}
+        onChange={(e) => setDraftQ(e.target.value)}
+        aria-label="Suche"
       />
       {STATUS_CHIPS.map((c) => (
         <button

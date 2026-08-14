@@ -1,8 +1,31 @@
 import type { Dispatch } from 'react';
-import type { GroupCard } from '@findseries/review-shared';
+import type { GroupBy, GroupCard, MediaFilter } from '@findseries/review-shared';
 import type { ReviewUiAction, ReviewUiState } from '../state/reviewState';
 import { MiniStatusBar } from './StatusOverview';
 import { ThumbImage } from './ThumbImage';
+
+/** Drilldown patch = only the group constraint (AND with globals). */
+export function drilldownPatchFromGroup(
+  groupBy: GroupBy,
+  g: GroupCard,
+): Partial<MediaFilter> {
+  switch (groupBy) {
+    case 'category': {
+      const id = Number(g.key);
+      return Number.isFinite(id) ? { categoryIds: [id] } : {};
+    }
+    case 'uploader':
+      return { uploader: g.key === '(ohne Uploader)' ? null : g.key };
+    case 'series':
+      return { seriesKey: g.key };
+    case 'provenance': {
+      const sourceType = g.key.includes(':') ? g.key.slice(g.key.indexOf(':') + 1) : g.key;
+      return { sourceTypes: [sourceType] };
+    }
+    default:
+      return {};
+  }
+}
 
 export function GroupShelf({
   state,
@@ -20,7 +43,7 @@ export function GroupShelf({
       <div className="shelfTitle">
         <strong>Gruppen</strong>
         <span className="muted">
-          {loading ? 'laden…' : `${groups.length} Karten`} · Klick setzt Drilldown
+          {loading ? 'laden…' : `${groups.length} Karten`} · Klick setzt Drilldown (AND)
         </span>
       </div>
       <div className="shelf">
@@ -40,7 +63,7 @@ export function GroupShelf({
                         kind: 'group',
                         key: g.key,
                         label: g.label,
-                        patch: g.drilldown,
+                        patch: drilldownPatchFromGroup(state.groupBy, g),
                       },
                 })
               }

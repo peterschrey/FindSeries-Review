@@ -20,6 +20,7 @@ import { queryFocus } from './services/focus.js';
 import { applyBulk, undoBatch } from './services/bulk.js';
 import { commitFinalize, previewFinalize } from './services/finalize.js';
 import { getOrCreateThumb } from './services/thumbs.js';
+import { listProjects } from './services/projects.js';
 import { CursorError } from './sql/filters.js';
 
 function parseBody<T>(schema: ZodTypeAny, body: unknown): T {
@@ -64,6 +65,8 @@ export async function buildServer(opts: BuildServerOpts) {
   });
 
   app.get('/health', async () => ({ ok: true }));
+
+  app.get('/api/projects', async () => listProjects(db));
 
   app.get<{ Params: { mediaId: string }; Querystring: { size?: string } }>(
     '/api/media/:mediaId/thumb',

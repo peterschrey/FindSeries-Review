@@ -1,13 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
-import type { FacetsResponse, GalleryResponse, GroupsResponse, MediaCard } from '@findseries/review-shared';
+import type {
+  FacetsResponse,
+  GroupsResponse,
+  MediaCard,
+  StatusCounts,
+} from '@findseries/review-shared';
 import { fetchFacets, fetchGallery, fetchGroups } from '../api/client';
 import type { ReviewUiState } from '../state/reviewState';
-import { toMediaFilter } from '../state/reviewState';
+import { toGlobalMediaFilter, toMediaFilter } from '../state/reviewState';
 
 export type GalleryModel = {
   items: MediaCard[];
   total: number;
-  statusCounts: GalleryResponse['statusCounts'];
+  statusCounts: StatusCounts;
   nextCursor: string | null;
   loading: boolean;
   loadingMore: boolean;
@@ -16,16 +21,63 @@ export type GalleryModel = {
   resetKey: string;
 };
 
-function filterKey(state: ReviewUiState): string {
+function galleryKey(state: ReviewUiState): string {
   return JSON.stringify({
     f: toMediaFilter(state),
     sort: state.sort,
     dir: state.dir,
+  });
+}
+
+function groupsKey(state: ReviewUiState): string {
+  return JSON.stringify({
+    f: toGlobalMediaFilter(state),
     groupBy: state.groupBy,
   });
 }
 
-export function useGalleryData(state: ReviewUiState): GalleryModel {
+function facetsKey(state: ReviewUiState): string {
+  return JSON.stringify(toGlobalMediaFilter(state));
+}
+
+function inventoryKey(projectId: number): string {
+  return `inv:${projectId}`;
+}
+
+function emptySafe(): StatusCounts {
+  return { unreviewed: 0, keep: 0, reject: 0, unsure: 0, total: 0 };
+}
+
+export function useInventoryCounts(projectId: number): StatusCounts {
+  const [counts, setCounts] = useState<StatusCounts>(emptySafe());
+  const key = inventoryKey(projectId);
+
+  useEffect(() => {
+    const ac = new AbortController();
+    fetchGallery(
+      {
+        projectId,
+        statuses: ['unreviewed', 'keep', 'reject', 'unsure'],
+        limit: 1,
+        sort: 'media_id',
+        dir: 'asc',
+        cursor: null,
+      },
+      ac.signal,
+    )
+      .then((res) => {
+        if (!ac.signal.aborted) setCounts(res.statusCounts);
+      })
+      .catch(() => {
+        /* ignore */
+      });
+    return () => ac.abort();
+  }, [key, projectId]);
+
+  return counts;
+}
+
+export function useGalleryData(state: ReviewUiState, reloadToken = 0): GalleryModel {
   const [items, setItems] = useState<MediaCard[]>([]);
   const [total, setTotal] = useState(0);
   const [statusCounts, setStatusCounts] = useState(emptySafe());
@@ -33,31 +85,37 @@ export function useGalleryData(state: ReviewUiState): GalleryModel {
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const key = filterKey(state);
+  const key = galleryKey(state);
   const keyRef = useRef(key);
   const cursorRef = useRef<string | null>(null);
+  const loadingMoreRef = useRef(false);
+  const inFlightCursorRef = useRef<string | null>(null);
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
   useEffect(() => {
     keyRef.current = key;
     cursorRef.current = null;
+    inFlightCursorRef.current = null;
+    loadingMoreRef.current = false;
     const ac = new AbortController();
     setLoading(true);
     setError(null);
     setItems([]);
     setNextCursor(null);
-    const filter = toMediaFilter(state);
+    const filter = toMediaFilter(stateRef.current);
     fetchGallery(
       {
         ...filter,
         limit: 120,
-        sort: state.sort,
-        dir: state.dir,
+        sort: stateRef.current.sort,
+        dir: stateRef.current.dir,
         cursor: null,
       },
       ac.signal,
     )
       .then((res) => {
-        if (keyRef.current !== key) return; // stale
+        if (keyRef.current !== key) return;
         setItems(res.items);
         setTotal(res.total);
         setStatusCounts(res.statusCounts);
@@ -73,20 +131,23 @@ export function useGalleryData(state: ReviewUiState): GalleryModel {
         if (keyRef.current === key) setLoading(false);
       });
     return () => ac.abort();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
+  }, [key, reloadToken]);
 
   const loadMore = () => {
-    if (!cursorRef.current || loadingMore || loading) return;
-    const acKey = keyRef.current;
     const cursor = cursorRef.current;
+    if (!cursor || loadingMoreRef.current || keyRef.current !== key) return;
+    if (inFlightCursorRef.current === cursor) return;
+    const acKey = keyRef.current;
+    loadingMoreRef.current = true;
+    inFlightCursorRef.current = cursor;
     setLoadingMore(true);
-    const filter = toMediaFilter(state);
+    const s = stateRef.current;
+    const filter = toMediaFilter(s);
     fetchGallery({
       ...filter,
       limit: 120,
-      sort: state.sort,
-      dir: state.dir,
+      sort: s.sort,
+      dir: s.dir,
       cursor,
     })
       .then((res) => {
@@ -108,6 +169,8 @@ export function useGalleryData(state: ReviewUiState): GalleryModel {
         /* ignore stale */
       })
       .finally(() => {
+        if (inFlightCursorRef.current === cursor) inFlightCursorRef.current = null;
+        loadingMoreRef.current = false;
         if (keyRef.current === acKey) setLoadingMore(false);
       });
   };
@@ -125,10 +188,6 @@ export function useGalleryData(state: ReviewUiState): GalleryModel {
   };
 }
 
-function emptySafe() {
-  return { unreviewed: 0, keep: 0, reject: 0, unsure: 0, total: 0 };
-}
-
 export function useGroupsData(state: ReviewUiState): {
   groups: GroupsResponse['groups'];
   loading: boolean;
@@ -137,17 +196,19 @@ export function useGroupsData(state: ReviewUiState): {
   const [groups, setGroups] = useState<GroupsResponse['groups']>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const key = filterKey(state);
+  const key = groupsKey(state);
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
   useEffect(() => {
     const ac = new AbortController();
     setLoading(true);
     setError(null);
-    const filter = toMediaFilter({ ...state, drilldown: null });
+    const filter = toGlobalMediaFilter(stateRef.current);
     fetchGroups(
       {
         ...filter,
-        groupBy: state.groupBy,
+        groupBy: stateRef.current.groupBy,
         limit: 40,
         sampleSize: 4,
       },
@@ -163,8 +224,7 @@ export function useGroupsData(state: ReviewUiState): {
         if (!ac.signal.aborted) setLoading(false);
       });
     return () => ac.abort();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, state.groupBy]);
+  }, [key]);
 
   return { groups, loading, error };
 }
@@ -175,12 +235,14 @@ export function useFacetsData(state: ReviewUiState): {
 } {
   const [facets, setFacets] = useState<FacetsResponse | null>(null);
   const [loading, setLoading] = useState(false);
-  const key = JSON.stringify(toMediaFilter({ ...state, drilldown: null }));
+  const key = facetsKey(state);
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
   useEffect(() => {
     const ac = new AbortController();
     setLoading(true);
-    fetchFacets(toMediaFilter({ ...state, drilldown: null }), ac.signal)
+    fetchFacets(toGlobalMediaFilter(stateRef.current), ac.signal)
       .then((res) => {
         if (!ac.signal.aborted) setFacets(res);
       })
@@ -191,8 +253,10 @@ export function useFacetsData(state: ReviewUiState): {
         if (!ac.signal.aborted) setLoading(false);
       });
     return () => ac.abort();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
   return { facets, loading };
 }
+
+/** Test helpers exported for dependency-key unit tests. */
+export const __requestKeys = { galleryKey, groupsKey, facetsKey };

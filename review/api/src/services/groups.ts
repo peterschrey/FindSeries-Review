@@ -146,6 +146,8 @@ export function queryGroups(db: ReviewDb, q: GroupQuery): GroupsResponse {
     q: q.q,
     sourceTypes: q.sourceTypes,
     categoryIds: q.categoryIds,
+    alsoCategoryIds: q.alsoCategoryIds,
+    alsoSourceTypes: q.alsoSourceTypes,
     uploader: q.uploader,
     seriesKey: q.seriesKey,
     seedKey: q.seedKey,
@@ -173,7 +175,7 @@ export function queryGroups(db: ReviewDb, q: GroupQuery): GroupsResponse {
   const groups: GroupCard[] = keyRows.map((r) => {
     const key = String(r.gkey ?? '');
     const drill = drilldownFor(q.groupBy, key, q.projectId, filter);
-    const accurate = computeStatusCounts(db, drill);
+    const accurate = computeStatusCounts(db, drill, { breakdownAllStatuses: true });
     let sampleMedia: MediaCard[] = [];
     if (q.sampleSize > 0) {
       const sampleBase = buildFilteredMediaCte(drill);
@@ -196,7 +198,7 @@ export function queryGroups(db: ReviewDb, q: GroupQuery): GroupsResponse {
     };
   });
 
-  const statusCounts = computeStatusCounts(db, filter);
+  const statusCounts = computeStatusCounts(db, filter, { breakdownAllStatuses: true });
   return {
     groups,
     resultTotal: statusCounts.total,

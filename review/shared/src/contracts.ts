@@ -43,6 +43,13 @@ export const MediaFilterSchema = z.object({
   sourceTypes: z.array(z.string()).optional(),
   /** Category roots; subtree + fallback semantics from CATEGORY_GRAPH.md */
   categoryIds: z.array(z.number().int().positive()).optional(),
+  /**
+   * Extra category roots that must ALSO match (AND with categoryIds).
+   * Used for group drilldown without replacing global category filters.
+   */
+  alsoCategoryIds: z.array(z.number().int().positive()).optional(),
+  /** Extra sourceTypes that must ALSO match (AND with sourceTypes). */
+  alsoSourceTypes: z.array(z.string()).optional(),
   /** undefined = no filter; null = empty/null uploader; string = exact */
   uploader: z.string().nullable().optional(),
   seriesKey: z.string().optional(),
@@ -51,6 +58,18 @@ export const MediaFilterSchema = z.object({
   mediaIds: z.array(z.number().int().positive()).optional(),
 });
 export type MediaFilter = z.infer<typeof MediaFilterSchema>;
+
+export const ProjectSummarySchema = z.object({
+  id: z.number().int().positive(),
+  name: z.string(),
+  slug: z.string().nullable(),
+});
+export type ProjectSummary = z.infer<typeof ProjectSummarySchema>;
+
+export const ProjectsResponseSchema = z.object({
+  projects: z.array(ProjectSummarySchema),
+});
+export type ProjectsResponse = z.infer<typeof ProjectsResponseSchema>;
 
 export const StatusCountsSchema = z.object({
   unreviewed: z.number().int().nonnegative(),

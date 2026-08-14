@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type Dispatch, type MouseEvent } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import type { Dispatch } from 'react';
 import type { MediaCard } from '@findseries/review-shared';
 import type { ReviewUiAction, ReviewUiState } from '../state/reviewState';
 import type { GalleryModel } from '../hooks/useReviewData';
@@ -8,6 +7,7 @@ import { ThumbImage } from './ThumbImage';
 
 const CELL = 118;
 const GAP = 7;
+const CLICK_DELAY_MS = 220;
 
 export function Gallery({
   state,
@@ -20,6 +20,9 @@ export function Gallery({
 }) {
   const parentRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(800);
+  const clickTimerRef = useRef<number | null>(null);
+  const selectedSet = useMemo(() => new Set(state.selectedIds), [state.selectedIds]);
+  const orderedIds = useMemo(() => gallery.items.map((i) => i.mediaId), [gallery.items]);
 
   useEffect(() => {
     const el = parentRef.current;
@@ -28,6 +31,12 @@ export function Gallery({
     ro.observe(el);
     setWidth(el.clientWidth || 800);
     return () => ro.disconnect();
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (clickTimerRef.current) window.clearTimeout(clickTimerRef.current);
+    };
   }, []);
 
   const cols = Math.max(1, Math.floor((width + GAP) / (CELL + GAP)));
@@ -58,10 +67,36 @@ export function Gallery({
     return () => el.removeEventListener('scroll', onScroll);
   }, [gallery]);
 
-  // Reset scroll on filter change
+  // Reset scroll only when gallery result identity changes (not groupBy)
   useEffect(() => {
     parentRef.current?.scrollTo({ top: 0 });
   }, [gallery.resetKey]);
+
+  const onThumbClick = (e: MouseEvent, mediaId: number) => {
+    e.preventDefault();
+    if (e.detail > 1) return;
+    const ctrl = e.ctrlKey || e.metaKey;
+    const shift = e.shiftKey;
+    if (clickTimerRef.current) window.clearTimeout(clickTimerRef.current);
+    clickTimerRef.current = window.setTimeout(() => {
+      clickTimerRef.current = null;
+      dispatch({
+        type: 'select_click',
+        mediaId,
+        ctrl,
+        shift,
+        orderedIds,
+      });
+    }, CLICK_DELAY_MS);
+  };
+
+  const onThumbDblClick = (mediaId: number) => {
+    if (clickTimerRef.current) {
+      window.clearTimeout(clickTimerRef.current);
+      clickTimerRef.current = null;
+    }
+    dispatch({ type: 'set_focus', mediaId });
+  };
 
   return (
     <div className="center">
@@ -75,6 +110,18 @@ export function Gallery({
             </button>
           </span>
         )}
+        {state.categoryIds?.length ? (
+          <span className="crumb">
+            Kategorien: {state.categoryIds.join(',')}
+            <button
+              type="button"
+              className="x"
+              onClick={() => dispatch({ type: 'remove_filter', key: 'categoryIds' })}
+            >
+              ×
+            </button>
+          </span>
+        ) : null}
         {state.drilldown && (
           <span className="crumb">
             {state.drilldown.label}
@@ -90,7 +137,7 @@ export function Gallery({
         {gallery.loading && <span className="crumb">lädt…</span>}
         {gallery.error && <span className="crumb">Fehler: {gallery.error}</span>}
       </div>
-      <div className="gallerywrap" ref={parentRef}>
+      <div className="gallerywrap" ref={parentRef} data-testid="gallery-scroll">
         {(gallery.loading || gallery.loadingMore) && (
           <div className="loadingBanner">{gallery.loading ? 'Galerie…' : 'Nachladen…'}</div>
         )}
@@ -113,7 +160,7 @@ export function Gallery({
                 }}
               >
                 {row.map((item) => {
-                  const sel = state.selectedIds.includes(item.mediaId);
+                  const sel = selectedSet.has(item.mediaId);
                   const focused = state.focusMediaId === item.mediaId;
                   return (
                     <button
@@ -121,16 +168,8 @@ export function Gallery({
                       type="button"
                       className={`thumb ${item.reviewStatus} ${sel ? 'sel' : ''}`}
                       style={{ position: 'relative', width: CELL, height: CELL - 8 }}
-                      onClick={(e) =>
-                        dispatch({
-                          type: 'select_click',
-                          mediaId: item.mediaId,
-                          ctrl: e.ctrlKey || e.metaKey,
-                        })
-                      }
-                      onDoubleClick={() =>
-                        dispatch({ type: 'set_focus', mediaId: item.mediaId })
-                      }
+                      onClick={(e) => onThumbClick(e, item.mediaId)}
+                      onDoubleClick={() => onThumbDblClick(item.mediaId)}
                     >
                       <ThumbImage mediaId={item.mediaId} alt={item.title ?? ''} />
                       <span className="statusbadge">{item.reviewStatus}</span>

@@ -28,6 +28,8 @@ function resolveTargetIds(db: ReviewDb, req: BulkRequest): number[] {
     q: req.filter?.q,
     sourceTypes: req.filter?.sourceTypes,
     categoryIds: req.filter?.categoryIds,
+    alsoCategoryIds: req.filter?.alsoCategoryIds,
+    alsoSourceTypes: req.filter?.alsoSourceTypes,
     uploader: req.filter?.uploader,
     seriesKey: req.filter?.seriesKey,
     seedKey: req.filter?.seedKey,

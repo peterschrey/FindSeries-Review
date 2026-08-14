@@ -19,26 +19,41 @@ function emptyCounts(): StatusCounts {
   return { unreviewed: 0, keep: 0, reject: 0, unsure: 0, total: 0 };
 }
 
-export function computeStatusCounts(db: ReviewDb, filter: MediaFilter): StatusCounts {
+export function computeStatusCounts(
+  db: ReviewDb,
+  filter: MediaFilter,
+  opts?: { breakdownAllStatuses?: boolean },
+): StatusCounts {
   const resolved = resolveStatuses(filter);
   if (resolved === 'empty') return emptyCounts();
 
+  const countFilter: MediaFilter = opts?.breakdownAllStatuses
+    ? {
+        ...filter,
+        statuses: ['unreviewed', 'keep', 'reject', 'unsure'],
+      }
+    : filter;
+
   const hasExtra =
-    Boolean(filter.q?.trim()) ||
-    filter.uploader !== undefined ||
-    filter.mediaIds !== undefined ||
-    filter.sourceTypes !== undefined ||
-    filter.categoryIds !== undefined ||
-    Boolean(filter.seriesKey) ||
-    Boolean(filter.seedKey) ||
-    Boolean(filter.parentMediaId);
+    Boolean(countFilter.q?.trim()) ||
+    countFilter.uploader !== undefined ||
+    countFilter.mediaIds !== undefined ||
+    countFilter.sourceTypes !== undefined ||
+    countFilter.alsoSourceTypes !== undefined ||
+    countFilter.categoryIds !== undefined ||
+    countFilter.alsoCategoryIds !== undefined ||
+    Boolean(countFilter.seriesKey) ||
+    Boolean(countFilter.seedKey) ||
+    Boolean(countFilter.parentMediaId);
 
   // Fast path: project-scoped sparse counts via index on media_review_status.
-  if (!hasExtra) {
+  // Only when counting all statuses without other filters.
+  const countStatuses = resolveStatuses(countFilter);
+  if (!hasExtra && countStatuses !== 'empty' && countStatuses.length === 4) {
     const totalPm = (
       db
         .prepare(`SELECT COUNT(*) AS c FROM project_media WHERE project_id = ?`)
-        .get(filter.projectId) as { c: number }
+        .get(countFilter.projectId) as { c: number }
     ).c;
     const rows = db
       .prepare(
@@ -47,7 +62,7 @@ export function computeStatusCounts(db: ReviewDb, filter: MediaFilter): StatusCo
          WHERE project_id = ?
          GROUP BY status`,
       )
-      .all(filter.projectId) as Array<{ status: string; c: number }>;
+      .all(countFilter.projectId) as Array<{ status: string; c: number }>;
     const keep = Number(rows.find((r) => r.status === 'keep')?.c ?? 0);
     const reject = Number(rows.find((r) => r.status === 'reject')?.c ?? 0);
     const unsure = Number(rows.find((r) => r.status === 'unsure')?.c ?? 0);
@@ -61,13 +76,7 @@ export function computeStatusCounts(db: ReviewDb, filter: MediaFilter): StatusCo
     };
   }
 
-  const base = buildFilteredMediaCte(
-    {
-      ...filter,
-      statuses: ['unreviewed', 'keep', 'reject', 'unsure'],
-    },
-    'count',
-  );
+  const base = buildFilteredMediaCte(countFilter, 'count');
   const row = db
     .prepare(
       `WITH fm AS (${base.sql})
@@ -110,6 +119,8 @@ export function queryGallery(db: ReviewDb, q: GalleryQuery): GalleryResponse {
     q: q.q,
     sourceTypes: q.sourceTypes,
     categoryIds: q.categoryIds,
+    alsoCategoryIds: q.alsoCategoryIds,
+    alsoSourceTypes: q.alsoSourceTypes,
     uploader: q.uploader,
     seriesKey: q.seriesKey,
     seedKey: q.seedKey,
@@ -186,15 +197,10 @@ export function queryGallery(db: ReviewDb, q: GalleryQuery): GalleryResponse {
   }
 
   const statusCounts = computeStatusCounts(db, filter);
-  const statusList = resolveStatuses(filter);
-  const total =
-    statusList === 'empty'
-      ? 0
-      : statusList.reduce((sum, st) => sum + statusCounts[st], 0);
   return {
     items,
     nextCursor,
-    total,
+    total: statusCounts.total,
     statusCounts,
   };
 }

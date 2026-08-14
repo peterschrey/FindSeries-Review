@@ -70,7 +70,13 @@ function buildWhere(filter: MediaFilter): { where: string[]; params: unknown[]; 
   if (filter.sourceTypes !== undefined && filter.sourceTypes.length === 0) {
     return { where: ['0'], params: [], joinExtra: '', empty: true };
   }
+  if (filter.alsoSourceTypes !== undefined && filter.alsoSourceTypes.length === 0) {
+    return { where: ['0'], params: [], joinExtra: '', empty: true };
+  }
   if (filter.categoryIds !== undefined && filter.categoryIds.length === 0) {
+    return { where: ['0'], params: [], joinExtra: '', empty: true };
+  }
+  if (filter.alsoCategoryIds !== undefined && filter.alsoCategoryIds.length === 0) {
     return { where: ['0'], params: [], joinExtra: '', empty: true };
   }
   if (filter.mediaIds !== undefined && filter.mediaIds.length === 0) {
@@ -99,6 +105,14 @@ function buildWhere(filter: MediaFilter): { where: string[]; params: unknown[]; 
         AND dsrc.source_type IN (${filter.sourceTypes.map(() => '?').join(',')})
     )`);
     params.push(...filter.sourceTypes);
+  }
+  if (filter.alsoSourceTypes?.length) {
+    where.push(`EXISTS (
+      SELECT 1 FROM discoveries dsrc2
+      WHERE dsrc2.project_id = pm.project_id AND dsrc2.media_id = pm.media_id
+        AND dsrc2.source_type IN (${filter.alsoSourceTypes.map(() => '?').join(',')})
+    )`);
+    params.push(...filter.alsoSourceTypes);
   }
   if (filter.parentMediaId) {
     where.push(`EXISTS (
@@ -134,10 +148,21 @@ function buildWhere(filter: MediaFilter): { where: string[]; params: unknown[]; 
   }
 
   let joinExtra = '';
+  const catJoins: string[] = [];
+  const catParams: unknown[] = [];
   if (filter.categoryIds?.length) {
     const cat = categoryMediaSql(filter.projectId, filter.categoryIds);
-    params.unshift(...cat.params);
-    joinExtra = `JOIN (${cat.sql}) catf ON catf.media_id = pm.media_id`;
+    catParams.push(...cat.params);
+    catJoins.push(`JOIN (${cat.sql}) catf ON catf.media_id = pm.media_id`);
+  }
+  if (filter.alsoCategoryIds?.length) {
+    const cat2 = categoryMediaSql(filter.projectId, filter.alsoCategoryIds);
+    catParams.push(...cat2.params);
+    catJoins.push(`JOIN (${cat2.sql}) catf2 ON catf2.media_id = pm.media_id`);
+  }
+  if (catJoins.length) {
+    params.unshift(...catParams);
+    joinExtra = catJoins.join('\n');
   }
   return { where, params, joinExtra, empty: false };
 }
