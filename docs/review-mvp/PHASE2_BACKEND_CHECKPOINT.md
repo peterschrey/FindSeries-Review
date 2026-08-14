@@ -96,4 +96,4 @@ Default-Galerie liegt klar unter dem 500‑ms-Ziel. Category-/Group-/Focus-Aggre
 ## 9. Branch + Commit
 
 - **Branch:** `review-mvp`
-- **Commit:** wird nach Push eingetragen (siehe Git-Log / Checkpoint-Report)
+- **Commit:** `4826eab401a897e347923c43584929ad16827215`
