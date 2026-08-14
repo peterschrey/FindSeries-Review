@@ -1,0 +1,54 @@
+﻿{
+  "Category": {
+    "Depth": 2,
+    "MaxCategories": 1000,
+    "MaxFiles": 75000,
+    "DriftGuard": "Strict",
+    "PruneAfterDepth": 1,
+    "MaxChildrenPerCategory": 200
+  },
+  "Neighbors": {
+    "Enabled": true,
+    "MaxSeeds": 40,
+    "Minutes": 60,
+    "MaxResultsPerSeed": 50,
+    "MaxUploaderScan": 1000,
+    "MaxApiPagesPerSeed": 8,
+    "MaxSecondsPerSeed": 240,
+    "SeriesExpansion": false
+  },
+  "Download": {
+    "MinScore": 50,
+    "VerifySha1": false,
+    "SeedBatchSize": 2000,
+    "DelayMs": 2000,
+    "Retries": 6,
+    "TimeoutSeconds": 300,
+    "DelayIncreasePercent": 25,
+    "DelayIncreaseMinMs": 20,
+    "DelayIncreaseMaxMs": 100,
+    "DelayDecreasePercent": 10,
+    "DelayDecreaseMinMs": 20,
+    "DelayDecreaseMaxMs": 100,
+    "BurstRecoverySuccesses": 8,
+    "BurstRecoverySeconds": 20,
+    "RecoveryWorkerSpacingMs": 3000,
+    "ClaimBatchSize": 4,
+    "AutoTuneMinDelayMs": 1000,
+    "AutoTuneMinImprovementPct": 2.0,
+    "CompletionBatchSize": 4
+  },
+  "Review": {
+    "Enabled": true,
+    "BatchSize": 500,
+    "MaxExportsPerSync": 5000,
+    "LinkMode": "Auto",
+    "RemoveOriginalOnReject": true
+  },
+  "Metadata": {
+    "SeedBatchSize": 2000
+  },
+  "Api": {
+    "Contact": "mailto:pschrey@gmail.com"
+  }
+}

@@ -1,0 +1,443 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FindSeries Review – Gruppenansicht mit optionalem Fokus</title>
+<style>
+:root{
+  --bg:#0a0e14; --panel:#101720; --panel2:#141d28; --line:#273444; --line2:#3d516a;
+  --text:#eef4fa; --muted:#92a3b8; --accent:#39c7ff;
+  --keep:#2ecc71; --reject:#ff6b6b; --unsure:#f2c94c; --unrated:#7f8c9c;
+  --cat:#7b61ff; --keyword:#23b5a5; --seed:#ff9f43; --neighbor:#f368e0; --upload:#4bcffa;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--text);font:13px/1.35 "Segoe UI",Arial,sans-serif;overflow:hidden}
+button,input,select{font:inherit}
+button{cursor:pointer}
+.app{height:100vh;display:grid;grid-template-rows:52px 46px 84px 156px 1fr 34px}
+
+header{display:flex;align-items:center;gap:14px;padding:0 14px;background:#0d131a;border-bottom:1px solid var(--line)}
+header h1{margin:0;font-size:16px}
+.project{color:var(--muted)}
+.topstats{margin-left:auto;display:flex;gap:7px}
+.stat{padding:5px 8px;border:1px solid var(--line);border-radius:999px;background:#111923;font-size:11px}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px}
+
+.commandbar{display:flex;align-items:center;gap:7px;padding:6px 10px;background:#0f161f;border-bottom:1px solid var(--line)}
+.searchbox{width:280px;background:#131c27;color:var(--text);border:1px solid var(--line);border-radius:7px;padding:7px 10px}
+.btn,.chip,.select{background:#172231;color:var(--text);border:1px solid #31435b;border-radius:7px;padding:6px 9px}
+.btn:hover,.chip:hover{border-color:#4e6786}
+.chip.active{border-color:var(--accent);background:#102534}
+.sep{width:1px;height:27px;background:var(--line)}
+.spacer{flex:1}
+
+.overview{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;padding:10px;background:#0c1219;border-bottom:1px solid var(--line)}
+.summaryCard{background:#111923;border:1px solid #2e3d52;border-radius:9px;padding:10px}
+.summaryCard h3{margin:0 0 7px;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#b4c2d0}
+.summaryTop{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:6px}
+.summaryTop strong{font-size:15px}
+.statusBar,.smallbar{border-radius:999px;overflow:hidden;display:flex;background:#202836;border:1px solid #374a62}
+.statusBar{height:18px}.smallbar{height:6px}
+.seg{height:100%}
+.legend{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:8px}
+.legendItem{background:#0f1721;border:1px solid #26374a;border-radius:7px;padding:5px 6px;font-size:11px}
+.legendItem b{display:block;color:#fff;font-size:12px}
+.legendItem span{color:var(--muted)}
+
+.shelfWrap{padding:8px 10px;background:#0d141c;border-bottom:1px solid var(--line);overflow-x:auto}
+.shelfTitle{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.shelfTitle strong{font-size:12px}
+.shelfTitle .muted{color:var(--muted)}
+.shelf{display:flex;gap:10px;min-width:max-content;padding-bottom:2px}
+.shelfCard{width:220px;min-height:110px;background:#121b26;border:1px solid #2b3a4f;border-radius:10px;padding:9px;display:flex;flex-direction:column;gap:6px}
+.shelfCard:hover{border-color:#506986}
+.shelfCard.active{border-color:var(--accent);box-shadow:0 0 0 1px rgba(49,197,255,.25) inset;background:#122030}
+.focusCard{width:290px;background:#10202d;border-color:#4f6c88;position:relative}
+.focusClose{position:absolute;top:6px;right:7px;width:22px;height:22px;border-radius:50%;border:1px solid #4f6c88;background:#0d1721;color:#cfe8f5;font-size:16px;line-height:18px;padding:0;display:grid;place-items:center}.focusClose:hover{background:#26394b;color:#fff;border-color:var(--accent)}
+.focusTop{display:grid;grid-template-columns:80px 1fr;gap:8px;padding-right:20px}
+.focusPreview{height:74px;border-radius:8px;display:grid;place-items:center;text-align:center;padding:7px;font-weight:700}
+.focusMeta .tag{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+.focusMeta .file{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:3px}
+.focusMeta .sub{font-size:11px;color:var(--muted);margin-top:3px}
+.focusOrigins{display:flex;gap:4px;flex-wrap:wrap}
+.originChip{font-size:10px;padding:3px 6px;border-radius:999px;background:#0f1721;border:1px solid #334860}
+.originDot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:5px}
+.relTop{display:flex;justify-content:space-between;gap:6px;align-items:flex-start}
+.relTitle{font-weight:700}
+.relSub{font-size:11px;color:var(--muted)}
+.relCount{font-size:22px;font-weight:700;line-height:1}
+.sliderbox{display:grid;grid-template-columns:1fr 48px;gap:8px;align-items:center}
+.groupMini{font-size:10px;color:var(--muted)}
+.cardcaption{font-size:10px;color:var(--muted);margin-top:auto}
+.cardTools{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.cardTools .btn{padding:4px 7px;font-size:11px}
+
+.main{min-height:0;display:grid;grid-template-columns:250px 1fr 310px}
+.left,.right{min-height:0;background:#0e151d;overflow:auto}
+.left{border-right:1px solid var(--line)} .right{border-left:1px solid var(--line)}
+.center{min-width:0;min-height:0;display:grid;grid-template-rows:42px 1fr}
+.section{padding:10px 11px;border-bottom:1px solid var(--line)}
+.section h3{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#aab9ca;margin:0 0 7px}
+.facet{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 8px;margin:4px 0;border:1px solid transparent;border-radius:7px;color:#c9d4df}
+.facet:hover{background:#121c27;border-color:#243349}.facet.active{background:#132333;border-color:#31516f}
+.leftname{display:flex;align-items:center;gap:7px}.count{color:var(--muted);font-size:11px}
+.cat-tree .node{padding:5px 7px;margin:3px 0;border-radius:6px;border:1px solid transparent}
+.cat-tree .node:hover{background:#131d28;border-color:#28364a}.cat-tree .node.active{background:#1a1830;border-color:#5947a7}
+.cat-tree .children{margin-left:14px;padding-left:8px;border-left:1px dashed #33445c}
+
+.breadcrumbs{display:flex;align-items:center;gap:6px;padding:6px 10px;background:#0c1219;border-bottom:1px solid var(--line);overflow:auto;white-space:nowrap}
+.crumb{padding:5px 8px;border-radius:999px;background:#152130;border:1px solid #31435b}
+.crumb .x{margin-left:6px;color:#8da1b6}
+
+.gallerywrap{min-height:0;overflow:auto;padding:9px;background:#090e14}
+.gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:7px;align-content:start}
+.thumb{height:106px;position:relative;border:2px solid #2e3948;border-radius:7px;overflow:hidden;background:#18222d;cursor:pointer;user-select:none}
+.thumb.keep{border-color:var(--keep)} .thumb.reject{border-color:var(--reject)} .thumb.unsure{border-color:var(--unsure)} .thumb.sel{outline:2px solid var(--accent);outline-offset:1px}
+.thumbimg{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:9px;font-size:11px;font-weight:650}
+.thumbfoot{position:absolute;left:0;right:0;bottom:0;padding:22px 5px 4px;background:linear-gradient(transparent,rgba(0,0,0,.9));font-size:9px}
+.origins{position:absolute;left:4px;top:4px;display:flex;gap:3px}.ori{width:7px;height:7px;border-radius:50%;box-shadow:0 0 0 1px rgba(0,0,0,.55)}
+.statusbadge{position:absolute;right:4px;top:4px;background:rgba(0,0,0,.65);padding:2px 4px;border-radius:4px;font-size:8px}
+.focusMarker{position:absolute;left:4px;bottom:4px;background:rgba(49,197,255,.88);color:#001018;font-size:8px;font-weight:800;border-radius:4px;padding:2px 4px}
+
+.actionrow{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.action{padding:8px 6px;border-radius:7px;border:1px solid #324359;background:#162130;color:var(--text)}
+.action.keep{border-color:#347d59}.action.reject{border-color:#8f4444}.action.unsure{border-color:#806c2e}
+.kv{display:grid;grid-template-columns:82px 1fr;gap:4px;font-size:11px;margin-top:3px}
+.kv div:nth-child(odd){color:var(--muted)}
+.related{padding:6px 7px;margin:5px 0;border:1px solid #2d3d52;border-radius:7px;background:#121b26}.related:hover{border-color:#48627f}
+.helper{font-size:11px;color:var(--muted);background:#0f1721;border:1px solid #26384c;border-radius:8px;padding:8px}
+
+footer{display:flex;align-items:center;padding:0 10px;background:#0d131a;border-top:1px solid var(--line);color:var(--muted);font-size:11px}
+kbd{font-family:Consolas,monospace;background:#131c27;border:1px solid #3a4d67;border-radius:4px;padding:1px 4px;color:#dce7f2}
+.toast{position:fixed;right:14px;bottom:46px;z-index:5;background:#162130;border:1px solid #40536c;border-radius:8px;padding:9px 11px;display:none}
+</style>
+</head>
+<body>
+<div class="app">
+<header>
+  <h1>FindSeries Review</h1>
+  <span class="project">integrierte Gruppenansicht · Fokus nur optional per Doppelklick</span>
+  <div class="topstats" id="topStats"></div>
+</header>
+
+<div class="commandbar">
+  <input class="searchbox" id="search" placeholder="Suchen: Titel, Kategorie, Uploader, Seed …">
+  <button class="chip active" data-status="unrated"><span class="dot" style="background:var(--unrated)"></span>Unbewertet</button>
+  <button class="chip active" data-status="unsure"><span class="dot" style="background:var(--unsure)"></span>Unsicher</button>
+  <button class="chip" data-status="keep"><span class="dot" style="background:var(--keep)"></span>Behalten</button>
+  <button class="chip" data-status="reject"><span class="dot" style="background:var(--reject)"></span>Löschen</button>
+  <span class="sep"></span>
+  <select class="select" id="groupBy">
+    <option value="origin">Gruppieren: Herkunft</option>
+    <option value="visual">Gruppieren: visuelle Nähe</option>
+    <option value="category">Gruppieren: Kategorie</option>
+    <option value="uploader">Gruppieren: Uploader</option>
+    <option value="series">Gruppieren: Serie</option>
+  </select>
+  <select class="select" id="sortBy">
+    <option value="discovery">Sortieren: Fundreihenfolge</option>
+    <option value="similarity">Sortieren: visuelle Ähnlichkeit</option>
+    <option value="filename">Sortieren: Dateinamen-Serie</option>
+    <option value="uploader">Sortieren: Uploader</option>
+    <option value="category">Sortieren: Kategorie</option>
+  </select>
+  <span class="spacer"></span>
+  <button class="btn" id="clearAll">Filter zurücksetzen</button>
+</div>
+
+<div class="overview">
+  <div class="summaryCard"><h3>Gesamtbestand</h3><div id="summary-total"></div></div>
+  <div class="summaryCard"><h3>Aktuelle Ergebnismenge</h3><div id="summary-result"></div></div>
+  <div class="summaryCard"><h3>Aktuelle Auswahl</h3><div id="summary-selection"></div></div>
+</div>
+
+<div class="shelfWrap">
+  <div class="shelfTitle">
+    <strong>Gruppenübersicht</strong>
+    <span class="muted" id="shelfHint">Ohne Fokus zeigt die Leiste nur Gruppen der aktuellen Ergebnismenge. Doppelklick auf ein Bild setzt es als Fokus. Doppelklick erneut oder „Fokus aufheben“ entfernt den Fokus wieder.</span>
+  </div>
+  <div class="shelf" id="shelf"></div>
+</div>
+
+<div class="main">
+<aside class="left">
+  <div class="section">
+    <h3>Globale Facetten · Herkunft</h3><div id="originFacets"></div>
+  </div>
+  <div class="section">
+    <h3>Globale Facetten · Kategorie</h3><div class="cat-tree" id="catTree"></div>
+  </div>
+  <div class="section">
+    <h3>Weitere Eingrenzung</h3>
+    <div class="facet" data-special="sameUploader"><span class="leftname">👤 gleicher Uploader</span><span class="count">+</span></div>
+    <div class="facet" data-special="sameSeries"><span class="leftname">↔ gleiche Serie</span><span class="count">+</span></div>
+    <div class="facet" data-special="sameSeed"><span class="leftname">✦ gleicher Seed</span><span class="count">+</span></div>
+  </div>
+</aside>
+
+<section class="center">
+  <div class="breadcrumbs" id="breadcrumbs"></div>
+  <div class="gallerywrap"><div class="gallery" id="gallery"></div></div>
+</section>
+
+<aside class="right">
+  <div class="section">
+    <h3>Auswahl</h3>
+    <div id="selectionText" style="margin-bottom:8px">0 Bilder ausgewählt</div>
+    <div class="actionrow">
+      <button class="action keep" data-setstatus="keep">K · Behalten</button>
+      <button class="action reject" data-setstatus="reject">R · Löschen</button>
+      <button class="action unsure" data-setstatus="unsure">U · Unsicher</button>
+      <button class="action" data-setstatus="unrated">N · Unbewertet</button>
+    </div>
+  </div>
+  <div class="section">
+    <h3>Fokusbild / Auswahl</h3><div id="focusDetails"></div>
+  </div>
+  <div class="section">
+    <h3>Verwandte Teilmengen</h3><div id="relatedSets"></div></div>
+</aside>
+</div>
+
+<footer>
+  <span><kbd>Klick</kbd> Auswahl · <kbd>Doppelklick</kbd> Fokus an/aus · <kbd>Shift+Klick</kbd> Bereich · <kbd>Ctrl+Klick</kbd> Mehrfachauswahl · <kbd>K</kbd> behalten · <kbd>R</kbd> löschen · <kbd>U</kbd> unsicher · <kbd>N</kbd> unbewertet</span>
+</footer>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const STATUS={unrated:"Unbewertet",keep:"Behalten",reject:"Löschen",unsure:"Unsicher"};
+const originInfo={category:{label:"Category Search",color:"var(--cat)"},keyword:{label:"Keyword Search",color:"var(--keyword)"},seed:{label:"Seed Search",color:"var(--seed)"},neighbor:{label:"Neighbor Search",color:"var(--neighbor)"},upload:{label:"Uploader / Serie",color:"var(--upload)"}};
+const cats=[{id:"dent",name:"Dentistry",parent:null},{id:"equip",name:"Dental equipment",parent:"dent"},{id:"chairs",name:"Dental chairs",parent:"equip"},{id:"units",name:"Dental units",parent:"equip"},{id:"tools",name:"Dental instruments",parent:"equip"},{id:"people",name:"Dental people",parent:"dent"},{id:"dentists",name:"Dentists",parent:"people"},{id:"patients",name:"Patients",parent:"people"},{id:"oral",name:"Oral health",parent:"dent"},{id:"mouth",name:"Mouth / teeth",parent:"oral"},{id:"xray",name:"Dental radiographs",parent:"oral"},{id:"drift",name:"Potential drift",parent:"dent"}];
+const themes=["Dental chair","Dental unit","Instrument","Dentist & patient","Portrait","Mouth / teeth","X-ray","Treatment room","Animal drift","Historic dental"];
+const palette=["#28485f","#23636a","#56536b","#345b47","#60435c","#70424a","#3b536d","#3e5868","#695234","#51436a"];
+const uploaders=["DentalArchive","FlickrImport","User_A","WikimediaBot","MuseumScan"];
+const catCycle=["chairs","units","tools","dentists","people","mouth","xray","equip","drift","oral"];
+const originCycle=[["category"],["category","keyword"],["seed"],["neighbor"],["category","neighbor"],["keyword"],["seed","neighbor"],["upload"],["category","seed"],["keyword","neighbor"]];
+const images=Array.from({length:320},(_,i)=>({id:i+1,filename:`${["DSC","IMG","Dental","Archive"][i%4]}_${String(i+1).padStart(5,"0")}.jpg`,status:i%41===0?"keep":i%59===0?"reject":i%27===0?"unsure":"unrated",theme:themes[i%themes.length],color:palette[i%palette.length],uploader:uploaders[i%uploaders.length],category:catCycle[i%catCycle.length],origins:originCycle[i%originCycle.length],seed:["Dental Unit","Dentist Patient","Historic Dentistry","Mouth","Dental Instruments"][i%5],keyword:["dentist","dental chair","mouth","treatment","dentistry"][i%5],series:`SER-${String(Math.floor(i/12)+1).padStart(3,"0")}`,similarity:60+((i*17)%39),discoveryOrder:i}));
+
+let activeStatuses=new Set(["unrated","unsure"]);
+let activeOrigins=new Set(),activeCats=new Set();
+let activeSpecial=null,activePivot=null,focusId=null;
+let selected=new Set(),lastClicked=null,activeGroupKey=null;
+
+const el=id=>document.getElementById(id);
+function focus(){return focusId!=null ? images.find(x=>x.id===focusId) : null}
+function catName(id){return cats.find(c=>c.id===id)?.name||id}
+function descendants(id){const out=[id];let changed=true;while(changed){changed=false;for(const c of cats){if(c.parent&&out.includes(c.parent)&&!out.includes(c.id)){out.push(c.id);changed=true}}}return out}
+function getCounts(list){const c={unrated:0,keep:0,reject:0,unsure:0,total:list.length};list.forEach(x=>c[x.status]++);return c}
+function statusBarHTML(c,small=false){const total=Math.max(c.total,1);return `<div class="${small?'smallbar':'statusBar'}"><div class="seg" style="width:${(c.unrated/total)*100}%;background:var(--unrated)"></div><div class="seg" style="width:${(c.keep/total)*100}%;background:var(--keep)"></div><div class="seg" style="width:${(c.reject/total)*100}%;background:var(--reject)"></div><div class="seg" style="width:${(c.unsure/total)*100}%;background:var(--unsure)"></div></div>`}
+function summaryHTML(head, c){const pct=v=>c.total?Math.round(v/c.total*100):0;return `<div class="summaryTop"><strong>${head}</strong><span class="count">${c.total} Bilder</span></div>${statusBarHTML(c)}<div class="legend"><div class="legendItem"><b>${c.unrated}</b><span>Unbewertet · ${pct(c.unrated)}%</span></div><div class="legendItem"><b>${c.keep}</b><span>Behalten · ${pct(c.keep)}%</span></div><div class="legendItem"><b>${c.reject}</b><span>Löschen · ${pct(c.reject)}%</span></div><div class="legendItem"><b>${c.unsure}</b><span>Unsicher · ${pct(c.unsure)}%</span></div></div>`}
+function updateTop(){const c=getCounts(images);el("topStats").innerHTML=`<span class="stat"><span class="dot" style="background:var(--unrated)"></span>${c.unrated} offen</span><span class="stat"><span class="dot" style="background:var(--keep)"></span>${c.keep} behalten</span><span class="stat"><span class="dot" style="background:var(--reject)"></span>${c.reject} löschen</span><span class="stat"><span class="dot" style="background:var(--unsure)"></span>${c.unsure} unsicher</span>`}
+function baseFiltered(){
+ const f=focus(), q=el("search").value.trim().toLowerCase();
+ let arr=images.filter(x=>activeStatuses.has(x.status));
+ if(activeOrigins.size) arr=arr.filter(x=>[...activeOrigins].every(o=>x.origins.includes(o)));
+ if(activeCats.size){let ids=[];activeCats.forEach(c=>ids.push(...descendants(c)));ids=[...new Set(ids)];arr=arr.filter(x=>ids.includes(x.category))}
+ if(activeSpecial==="sameUploader" && f) arr=arr.filter(x=>x.uploader===f.uploader);
+ if(activeSpecial==="sameSeries" && f) arr=arr.filter(x=>x.series===f.series);
+ if(activeSpecial==="sameSeed" && f) arr=arr.filter(x=>x.seed===f.seed);
+
+ if(f){
+   const sim=+el("simSlider").value;
+   if(activePivot==="similar") arr=arr.filter(x=>x.id!==f.id && (x.theme===f.theme || x.similarity>=sim));
+   if(activePivot==="series") arr=arr.filter(x=>x.series===f.series && x.id!==f.id);
+   if(activePivot==="category") arr=arr.filter(x=>x.category===f.category && x.id!==f.id);
+   if(activePivot==="seed") arr=arr.filter(x=>x.seed===f.seed && x.id!==f.id);
+   if(activePivot==="uploader") arr=arr.filter(x=>x.uploader===f.uploader && x.id!==f.id);
+   if(activePivot==="origin") arr=arr.filter(x=>x.id!==f.id && f.origins.some(o=>x.origins.includes(o)));
+ }
+ if(q) arr=arr.filter(x=>[x.filename,x.theme,x.uploader,catName(x.category),x.seed,x.keyword,x.origins.join(" ")].join(" ").toLowerCase().includes(q));
+ return arr;
+}
+function sortArray(arr){
+ const f=focus(), s=el("sortBy").value;
+ if(s==="filename") arr=[...arr].sort((a,b)=>a.filename.localeCompare(b.filename,undefined,{numeric:true}));
+ if(s==="uploader") arr=[...arr].sort((a,b)=>a.uploader.localeCompare(b.uploader)||a.discoveryOrder-b.discoveryOrder);
+ if(s==="category") arr=[...arr].sort((a,b)=>catName(a.category).localeCompare(catName(b.category))||a.discoveryOrder-b.discoveryOrder);
+ if(s==="similarity" && f) arr=[...arr].sort((a,b)=>(b.theme===f.theme?100:b.similarity)-(a.theme===f.theme?100:a.similarity));
+ return arr;
+}
+function groupData(arr){
+ const by=el("groupBy").value, m=new Map();
+ const put=(k,label,x)=>{if(!m.has(k))m.set(k,{key:k,label,items:[]});m.get(k).items.push(x)};
+ arr.forEach(x=>{
+   if(by==="origin") x.origins.forEach(o=>put("origin:"+o,originInfo[o].label,x));
+   if(by==="visual") put("visual:"+x.theme,x.theme,x);
+   if(by==="category") put("category:"+x.category,catName(x.category),x);
+   if(by==="uploader") put("uploader:"+x.uploader,x.uploader,x);
+   if(by==="series") put("series:"+x.series,x.series,x);
+ });
+ return [...m.values()].sort((a,b)=>b.items.length-a.items.length);
+}
+function filtered(){
+ let arr=baseFiltered();
+ const groups=groupData(arr);
+ if(activeGroupKey){
+   const g=groups.find(x=>x.key===activeGroupKey);
+   arr=g?g.items:[];
+ }
+ return sortArray(arr);
+}
+function relationSets(){
+ const f=focus(); if(!f) return [];
+ const base=baseFiltered(), sim=+el("simSlider").value;
+ return [
+  {key:"similar",title:"Ähnlich",sub:`≥ ${sim}% / ${f.theme}`,items:base.filter(x=>x.id!==f.id && (x.theme===f.theme || x.similarity>=sim))},
+  {key:"series",title:"Serie",sub:f.series,items:base.filter(x=>x.id!==f.id && x.series===f.series)},
+  {key:"category",title:"Kategorie",sub:catName(f.category),items:base.filter(x=>x.id!==f.id && x.category===f.category)},
+  {key:"seed",title:"Seed",sub:f.seed,items:base.filter(x=>x.id!==f.id && x.seed===f.seed)},
+  {key:"uploader",title:"Uploader",sub:f.uploader,items:base.filter(x=>x.id!==f.id && x.uploader===f.uploader)},
+  {key:"origin",title:"Herkunft",sub:f.origins.map(o=>originInfo[o].label).join(" + "),items:base.filter(x=>x.id!==f.id && f.origins.some(o=>x.origins.includes(o)))}
+ ];
+}
+
+function renderSummaries(){
+  const total=getCounts(images), result=getCounts(filtered()), sel=getCounts(images.filter(x=>selected.has(x.id)));
+  el("summary-total").innerHTML=summaryHTML(`${total.unrated} offen`, total);
+  el("summary-result").innerHTML=summaryHTML(`${result.unrated} offen`, result);
+  el("summary-selection").innerHTML=summaryHTML(`${sel.unrated} offen`, sel);
+}
+
+function renderShelf(){
+  const f=focus();
+  let cards=[];
+  if(f){
+    el("shelfHint").textContent="Fokus ist aktiv. Die erste Karte zeigt das Fokusbild, danach kommen die davon abgeleiteten Teilmengen. Dahinter folgen wieder die normalen Gruppen der aktuellen Ergebnismenge.";
+    cards.push(`<div class="shelfCard focusCard">
+      <button class="focusClose" id="focusClose" title="Fokus aufheben" aria-label="Fokus aufheben">×</button>
+      <div class="focusTop">
+        <div class="focusPreview" style="background:linear-gradient(145deg,${f.color},#15202b)">${f.theme}</div>
+        <div class="focusMeta">
+          <div class="tag">Fokusbild</div>
+          <div class="file">${f.filename}</div>
+          <div class="sub">${catName(f.category)} · ${f.uploader} · ${f.series}</div>
+        </div>
+      </div>
+      <div class="focusOrigins">${f.origins.map(o=>`<span class="originChip"><span class="originDot" style="background:${originInfo[o].color}"></span>${originInfo[o].label}</span>`).join("")}</div>
+      <div class="cardcaption">Doppelklick auf ein anderes Bild setzt einen neuen Fokus.</div>
+    </div>`);
+    cards.push(...relationSets().map(r=>{
+      const c=getCounts(r.items);
+      return `<div class="shelfCard ${activePivot===r.key?'active':''}" data-rel="${r.key}">
+        <div class="relTop"><div><div class="relTitle">${r.title}</div><div class="relSub">${r.sub}</div></div><div class="relCount">${r.items.length}</div></div>
+        ${r.key==="similar" ? `<div class="sliderbox"><input id="simSliderInline" type="range" min="60" max="98" value="${el("simSlider").value}"><strong>${el("simSlider").value}%</strong></div>` : ``}
+        <div class="groupMini">${c.unrated} offen · ${c.keep} behalten · ${c.reject} löschen · ${c.unsure} unsicher</div>
+        ${statusBarHTML(c,true)}
+      </div>`;
+    }));
+  } else {
+    el("shelfHint").textContent="Ohne Fokus zeigt die Leiste nur Gruppen der aktuellen Ergebnismenge. Doppelklick auf ein Bild setzt es als Fokus. Doppelklick erneut oder „Fokus aufheben“ entfernt den Fokus wieder.";
+  }
+  cards.push(...groupData(baseFiltered()).slice(0,10).map(g=>{
+    const c=getCounts(g.items);
+    return `<div class="shelfCard ${activeGroupKey===g.key?'active':''}" data-group="${g.key}">
+      <div class="relTop"><div><div class="relTitle">${g.label}</div><div class="relSub">Gruppe der aktuellen Ergebnismenge</div></div><div class="relCount">${g.items.length}</div></div>
+      <div class="groupMini">${c.unrated} offen · ${c.keep} behalten · ${c.reject} löschen · ${c.unsure} unsicher</div>
+      ${statusBarHTML(c,true)}
+    </div>`;
+  }));
+  el("shelf").innerHTML = cards.join("");
+  document.querySelectorAll("[data-rel]").forEach(n=>n.onclick=()=>{activePivot=(activePivot===n.dataset.rel?null:n.dataset.rel);activeGroupKey=null;renderAll()});
+  document.querySelectorAll("[data-group]").forEach(n=>n.onclick=()=>{activeGroupKey=(activeGroupKey===n.dataset.group?null:n.dataset.group);renderAll()});
+  const sIn=document.getElementById("simSliderInline");
+  if(sIn) sIn.oninput=()=>{el("simSlider").value=sIn.value; el("simValue").textContent=sIn.value+"%"; renderAll()};
+  const focusClose=document.getElementById("focusClose");
+  if(focusClose) focusClose.onclick=(e)=>{e.stopPropagation(); clearFocus(); renderAll(); toast("Fokus aufgehoben.");};
+}
+
+function renderOriginFacets(){
+  el("originFacets").innerHTML=Object.entries(originInfo).map(([k,v])=>`<div class="facet ${activeOrigins.has(k)?"active":""}" data-origin="${k}"><span class="leftname"><span class="originDot" style="background:${v.color}"></span>${v.label}</span><span class="count">${images.filter(x=>x.origins.includes(k)).length}</span></div>`).join("");
+  document.querySelectorAll("[data-origin]").forEach(n=>n.onclick=()=>{const k=n.dataset.origin;activeOrigins.has(k)?activeOrigins.delete(k):activeOrigins.add(k);renderAll()});
+}
+function renderCats(){
+  function node(c){const kids=cats.filter(x=>x.parent===c.id);return `<div><div class="node ${activeCats.has(c.id)?"active":""}" data-cat="${c.id}">${c.name}</div>${kids.length?`<div class="children">${kids.map(node).join("")}</div>`:""}</div>`}
+  el("catTree").innerHTML=node(cats.find(x=>x.id==="dent"));
+  document.querySelectorAll("[data-cat]").forEach(n=>n.onclick=e=>{const k=n.dataset.cat;if(e.ctrlKey||e.metaKey){activeCats.has(k)?activeCats.delete(k):activeCats.add(k)}else{activeCats.clear();activeCats.add(k)}renderAll()});
+}
+function renderCrumbs(){
+  const a=[]; activeOrigins.forEach(o=>a.push([originInfo[o].label,"origin",o])); activeCats.forEach(c=>a.push([catName(c),"cat",c]));
+  if(activeSpecial)a.push([{sameUploader:"gleicher Uploader",sameSeries:"gleiche Serie",sameSeed:"gleicher Seed"}[activeSpecial],"special",activeSpecial]);
+  if(activePivot)a.push([{similar:`Ähnlich ≥ ${el("simSlider").value}%`,series:"Serie des Fokusbilds",category:"Kategorie des Fokusbilds",seed:"Seed des Fokusbilds",uploader:"Uploader des Fokusbilds",origin:"Herkunft des Fokusbilds"}[activePivot],"pivot",activePivot]);
+  if(activeGroupKey){const g=groupData(baseFiltered()).find(x=>x.key===activeGroupKey);a.push([`Gruppe: ${g?g.label:activeGroupKey}`,"group",activeGroupKey])}
+  if(el("search").value.trim()) a.push([`Suche: ${el("search").value.trim()}`,"search","q"]);
+  if(focus()) a.push([`Fokus: ${focus().filename}`,"focus","focus"]);
+  el("breadcrumbs").innerHTML=a.length?a.map(x=>`<span class="crumb" data-t="${x[1]}" data-k="${x[2]}">${x[0]}<span class="x">×</span></span>`).join(""):`<span style="color:var(--muted)">Einfacher Klick wählt Bilder aus. Doppelklick setzt oder entfernt den Fokus. Ohne Fokus bleibt die Gruppenansicht neutral.</span>`;
+  document.querySelectorAll(".crumb").forEach(n=>n.onclick=()=>{if(n.dataset.t==="origin")activeOrigins.delete(n.dataset.k); if(n.dataset.t==="cat")activeCats.delete(n.dataset.k); if(n.dataset.t==="special")activeSpecial=null; if(n.dataset.t==="pivot")activePivot=null; if(n.dataset.t==="group")activeGroupKey=null; if(n.dataset.t==="search")el("search").value=""; if(n.dataset.t==="focus")clearFocus(); renderAll()});
+}
+function thumbHTML(x){return `<div class="thumb ${x.status} ${selected.has(x.id)?"sel":""}" data-id="${x.id}"><div class="thumbimg" style="background:linear-gradient(145deg,${x.color},#15202b 72%)">${x.theme}</div><div class="origins">${x.origins.map(o=>`<span class="ori" title="${originInfo[o].label}" style="background:${originInfo[o].color}"></span>`).join("")}</div><div class="statusbadge">${STATUS[x.status]}</div>${x.id===focusId?'<div class="focusMarker">FOKUS</div>':''}<div class="thumbfoot">${x.filename}</div></div>`}
+function renderGallery(arr){
+  el("gallery").innerHTML=arr.map(thumbHTML).join("");
+  document.querySelectorAll(".thumb").forEach(n=>{
+    n.onclick=e=>{
+      const id=+n.dataset.id;
+      if(e.shiftKey&&lastClicked!=null){
+        const ids=arr.map(x=>x.id), a=ids.indexOf(lastClicked), b=ids.indexOf(id);
+        if(a>=0&&b>=0){for(let i=Math.min(a,b);i<=Math.max(a,b);i++)selected.add(ids[i])}
+      } else if(e.ctrlKey||e.metaKey){
+        selected.has(id)?selected.delete(id):selected.add(id);
+      } else {
+        selected.clear(); selected.add(id);
+      }
+      lastClicked=id; renderAll();
+    };
+    n.ondblclick=e=>{
+      e.preventDefault(); e.stopPropagation();
+      const id=+n.dataset.id;
+      if(focusId===id){ clearFocus(); toast("Fokus aufgehoben."); }
+      else { focusId=id; activePivot=null; activeGroupKey=null; toast("Fokus gesetzt."); }
+      if(!selected.has(id)){ selected.clear(); selected.add(id); lastClicked=id; }
+      renderAll();
+    };
+  });
+}
+function renderSelection(){
+  const l=images.filter(x=>selected.has(x.id));
+  el("selectionText").innerHTML=l.length?`<strong>${l.length}</strong> Bilder ausgewählt<br><span class="count">${l.filter(x=>x.status==="keep").length} behalten · ${l.filter(x=>x.status==="reject").length} löschen · ${l.filter(x=>x.status==="unsure").length} unsicher · ${l.filter(x=>x.status==="unrated").length} unbewertet</span>`:"0 Bilder ausgewählt";
+}
+function renderFocusDetails(){
+  const f=focus();
+  if(f){
+    el("focusDetails").innerHTML=`<div class="kv"><div>Datei</div><div>${f.filename}</div><div>Status</div><div>${STATUS[f.status]}</div><div>Kategorie</div><div>${catName(f.category)}</div><div>Uploader</div><div>${f.uploader}</div><div>Serie</div><div>${f.series}</div><div>Seed</div><div>${f.seed}</div><div>Herkunft</div><div>${f.origins.map(o=>originInfo[o].label).join(", ")}</div></div>`;
+  } else {
+    const first = selected.size ? images.find(x=>x.id===[...selected][0]) : null;
+    el("focusDetails").innerHTML = first
+      ? `<div class="helper"><strong>Kein Fokus aktiv.</strong><br>Aktuell ist nur eine Auswahl gesetzt. Doppelklick auf ein Bild, um daraus einen Fokus zu machen.<br><br><strong>Ausgewähltes Bild:</strong><br>${first.filename}</div>`
+      : `<div class="helper"><strong>Kein Fokus aktiv.</strong><br>Doppelklick auf ein Bild, um ähnliche Bilder, Serie, Kategorie, Seed oder Herkunft davon abzuleiten.</div>`;
+  }
+}
+function renderRelated(){
+  const f=focus();
+  if(!f){ el("relatedSets").innerHTML=`<div class="helper">Erst mit Doppelklick ein Fokusbild setzen. Dann erscheinen hier direkte Sprungziele wie „Ähnlich“, „Serie“, „Kategorie“, „Seed“, „Uploader“ und „Herkunft“.</div>`; return; }
+  const sets=[["similar",`Ähnlich zu ${f.filename}`,`aktuell ≥ ${el("simSlider").value}%`],["series",`Serie ${f.series}`,`Dateinamens-/Serienzusammenhang`],["category",catName(f.category),`gleiche Kategorie`],["seed",`Seed: ${f.seed}`,`gleicher Ausgangstreffer`],["uploader",`Uploader: ${f.uploader}`,`gleicher Autor / Upload-Strom`],["origin",`Gleiche Herkunft`,f.origins.map(o=>originInfo[o].label).join(" + ")]];
+  el("relatedSets").innerHTML=sets.map(s=>`<div class="related" data-rel2="${s[0]}"><strong>${s[1]}</strong><br><span class="count">${s[2]}</span></div>`).join("");
+  document.querySelectorAll("[data-rel2]").forEach(n=>n.onclick=()=>{activePivot=n.dataset.rel2;activeGroupKey=null;renderAll()});
+}
+function setStatus(st){
+  if(!selected.size) return toast("Keine Bilder ausgewählt.");
+  const n=selected.size; images.filter(x=>selected.has(x.id)).forEach(x=>x.status=st); selected.clear(); lastClicked=null; renderAll(); toast(`${n} Bild(er) → ${STATUS[st]}`);
+}
+function toast(msg){const t=el("toast");t.textContent=msg;t.style.display="block";clearTimeout(window._tt);window._tt=setTimeout(()=>t.style.display="none",1600)}
+function clearFocus(){focusId=null;activePivot=null;}
+function renderAll(){
+  updateTop(); renderSummaries(); renderShelf(); renderOriginFacets(); renderCats(); renderCrumbs(); renderGallery(filtered()); renderSelection(); renderFocusDetails(); renderRelated();
+  document.querySelectorAll("[data-special]").forEach(n=>n.classList.toggle("active",n.dataset.special===activeSpecial));
+}
+document.querySelectorAll("[data-status]").forEach(n=>n.onclick=()=>{const s=n.dataset.status;activeStatuses.has(s)?activeStatuses.delete(s):activeStatuses.add(s);n.classList.toggle("active",activeStatuses.has(s));selected.clear();renderAll()});
+document.querySelectorAll("[data-setstatus]").forEach(n=>n.onclick=()=>setStatus(n.dataset.setstatus));
+document.querySelectorAll("[data-special]").forEach(n=>n.onclick=()=>{activeSpecial=activeSpecial===n.dataset.special?null:n.dataset.special;renderAll()});
+el("search").oninput=renderAll;
+el("groupBy").onchange=()=>{activeGroupKey=null;renderAll()}
+el("sortBy").onchange=renderAll;
+el("clearAll").onclick=()=>{activeStatuses=new Set(["unrated","unsure"]);document.querySelectorAll("[data-status]").forEach(n=>n.classList.toggle("active",activeStatuses.has(n.dataset.status)));activeOrigins.clear();activeCats.clear();activeSpecial=null;activePivot=null;focusId=null;activeGroupKey=null;selected.clear();lastClicked=null;el("search").value="";el("simSlider").value=82;el("simValue").textContent="82%";renderAll()}
+document.addEventListener("keydown",e=>{if(["INPUT","SELECT"].includes(document.activeElement.tagName)) return; const k=e.key.toLowerCase(); if(k==="k")setStatus("keep"); if(k==="r")setStatus("reject"); if(k==="u")setStatus("unsure"); if(k==="n")setStatus("unrated"); if(k==="escape"){clearFocus();renderAll();}});
+
+const hiddenSlider=document.createElement("input"); hiddenSlider.type="range"; hiddenSlider.min=60; hiddenSlider.max=98; hiddenSlider.value=82; hiddenSlider.id="simSlider"; hiddenSlider.style.display="none"; document.body.appendChild(hiddenSlider);
+const hiddenValue=document.createElement("span"); hiddenValue.id="simValue"; hiddenValue.textContent="82%"; hiddenValue.style.display="none"; document.body.appendChild(hiddenValue);
+
+renderAll();
+</script>
+</body>
+</html>

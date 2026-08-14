@@ -1,0 +1,40 @@
+# Local secrets / machine paths
+Config/local.json
+
+# Workspace runtime (never commit)
+Workspace/
+**/findseries-v5.db*
+**/*.db
+**/*.db-wal
+**/*.db-shm
+**/*.sqlite
+**/*.sqlite3
+
+# Media and review exports
+Media/
+Review/
+Logs/
+Diagnostics/
+Temp/
+.locks/
+
+# OS / editor
+Thumbs.db
+Desktop.ini
+.DS_Store
+*.swp
+.vscode/
+.idea/
+
+# Node / frontend build (Review-MVP)
+node_modules/
+dist/
+build/
+.cache/
+*.log
+.env
+.env.*
+
+# Local analysis copies
+tmp/
+*.bak

@@ -1,0 +1,50 @@
+---
+description: Verbindliche Arbeitsregeln für den FindSeries Review-MVP
+alwaysApply: true
+---
+
+# FindSeries Review-MVP
+
+## Taskarbeit
+
+- Arbeite taskweise nach Notion „Review MVP – Tasks“ (Source of Truth).
+- Implementiere keine spätere Funktion vorzeitig.
+- Keine neuen Features außerhalb des Tasks „weil sie praktisch wären“.
+- Definition of Done und Tests eines Tasks müssen erfüllt sein, bevor er Done wird.
+
+## Bestehende FindSeries-Pipeline
+
+- Bestehende FindSeries-Pipeline nicht unnötig refaktorieren oder ersetzen.
+- Bestehende Download-/Discovery-/Metadata-Funktionalität darf nicht beschädigt werden.
+- Vorhandene Explorer-Review-Pfade (`review_exports`, `media_rejections`, Sync) bleiben unberührt, bis ein Task die Integration ausdrücklich fordert.
+
+## Datenbank
+
+- Keine destruktiven Tests an der produktiven SQLite-Datenbank.
+- Entwicklung und Migrationen nur auf DB-Kopien.
+- Schemaänderungen ausschließlich als versionierte Migration.
+- Migrationen müssen idempotent und testbar sein.
+- Massenänderungen müssen transaktional und nachvollziehbar sein.
+- WAL-Modus und Schreibkonkurrenz mit Download-Workern berücksichtigen.
+
+## Review-Semantik
+
+- „Löschen“ im Review bedeutet zunächst Review-Status, NICHT physisches Löschen.
+- Physisches Löschen erfolgt ausschließlich über einen getrennten, kontrollierten Finalisierungsschritt.
+- „Behalten“ ist bei Massen-Reject standardmäßig geschützt.
+
+## UI / Performance
+
+- UI muss für 100.000+ Medien entworfen werden.
+- Keine vollständige 100k-Medienliste in Browser/DOM laden.
+- Pagination/Virtualisierung/Lazy Loading früh berücksichtigen.
+- Performance messen, nicht vermuten.
+- Keine Cloud-Abhängigkeit für Similarity ohne ausdrückliche Entscheidung.
+- Keine unnötige Architekturkomplexität.
+
+## Git
+
+- Review-MVP auf eigenem Branch entwickeln.
+- Kleine Commits pro Task oder eng gekoppeltem Taskblock.
+- Regelmäßig nach GitHub pushen.
+- Keine DB-, Media- oder Secret-Dateien committen.

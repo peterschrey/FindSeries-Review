@@ -1,0 +1,384 @@
+﻿# FindSeries – Aufrufe zum Kopieren und Einfügen
+# Stand: Hotfix 66 / optimierter Download-Claim und durchsatzsensitives AutoTune
+#
+# Aktuelle technische Kerneinstellungen:
+#   API-Abstand:             1200 ms
+#   Download-Abstand global: 1370 ms
+#   Download-AutoTune:       standardmäßig aus; Cat_Dentistry testet HF66 dynamisch bis Floor 1000 ms
+#   Download-Worker:         4
+#   User-Agent-Kontakt:      mailto:pschrey@gmail.com
+#
+# Alle Überschriften und Erläuterungen sind PowerShell-Kommentare.
+# Jeder Aufrufblock kann direkt in PowerShell eingefügt werden.
+
+
+# ============================================================================
+# PROGRAMMVERZEICHNIS
+# ============================================================================
+
+Set-Location "E:\Temp\FindSeries_v5_0_14"
+
+
+# ============================================================================
+# INITIALER IMPORT AUS FINDSeries V4
+# ============================================================================
+
+.\Import-FindSeriesV4.ps1 `
+    -Source "E:\Temp\findseries" `
+    -Workspace "E:\Temp\FindSeriesV5-Workspace" `
+    -ImageMode Move `
+    -BatchRecords 20000
+
+
+# ============================================================================
+# OPTIONAL: VERALTETE RUNS UND LEASES VOR EINEM RESUME REPARIEREN
+# Projektname bei Bedarf austauschen.
+# ============================================================================
+
+.\Get-FindSeriesStatus.ps1 `
+    -Project "Zahnmedizin" `
+    -Workspace "E:\Temp\FindSeriesV5-Workspace" `
+    -RepairStale `
+    -Errors
+
+
+# ============================================================================
+# SUCHFENSTER 1 – ZAHNMEDIZIN, UMFASSEND
+# ============================================================================
+
+.\FindSeries.ps1 `
+    -Project "Zahnmedizin" `
+    -Mode Resume `
+    -Profile Balanced `
+    -Category @(
+        "Category:Dental_units"
+        "Category:Dental_chairs"
+        "Category:Dental_equipment"
+    ) `
+    -KeywordGroup @(
+        "Zahnmedizin"
+        "Karies::Q2250111"
+        "Zahnkaries::Q133772"
+        "Zahnarzt"
+        "Zahnarztpraxis"
+        "Behandlungsstuhl"
+        "Zahnarztbohrer"
+        "Patient"
+    ) `
+    -Language "de" `
+    -Domain "Dentistry" `
+    -Set @(
+        # --------------------------------------------------------------------
+        # (1) FACHLICHE UND SUCH-PARAMETER
+        # --------------------------------------------------------------------
+
+        # Kategoriegraph: Tiefe und maximale Breite
+        "Category.Depth=3"
+        "Category.MaxCategories=1500"
+        "Category.MaxFiles=500000"
+        "Category.MaxChildrenPerCategory=300"
+        "Category.PruneAfterDepth=2"
+        "Category.DriftGuard=Strict"
+
+        # Begriffssuche: Sprachen, Synonyme, Kombinationen und Ergebnismenge
+        "Keyword.MaxLanguages=0"
+        "Keyword.MaxSynonymsPerConcept=5"
+        "Keyword.MaxQueriesPerLanguage=12"
+        "Keyword.MaxQueries=1000"
+        "Keyword.MaxResultsPerQuery=1000"
+
+        # Metadaten-Tiefe
+        "Metadata.Level=2"
+
+        # Nachbarsuche: Seed-, Zeit-, Seiten- und Ergebnistiefe
+        "Neighbors.Enabled=true"
+        "Neighbors.MaxSeeds=100"
+        "Neighbors.MinScore=70"
+        "Neighbors.Minutes=180"
+        "Neighbors.MaxResultsPerSeed=500"
+        "Neighbors.MaxUploaderScan=1000"
+        "Neighbors.MaxApiPagesPerSeed=10"
+        "Neighbors.MaxSecondsPerSeed=300"
+        "Neighbors.SeriesExpansion=true"
+
+        # Fachliche Schwelle für den Download
+        "Download.MinScore=40"
+
+        # --------------------------------------------------------------------
+        # (2) PERFORMANCE- UND TECHNISCHE EINSTELLUNGEN
+        # --------------------------------------------------------------------
+
+        "Api.Contact=mailto:pschrey@gmail.com"
+        "Api.DelayMs=1200"
+        "Api.Retries=12"
+
+        "Category.Workers=1"
+        "Keyword.Workers=1"
+
+        "Download.Workers=4"
+        "Download.DelayMs=1370"
+        "Download.AutoTune=false"
+        "Download.ReuseBatchSize=5000"
+        "Download.ClaimBatchSize=4"
+        "Download.CompletionBatchSize=4"
+        "Download.WorkerStartSpacingSeconds=15"
+
+        "Diagnostics.Profile=true"
+        "Diagnostics.Console=false"
+        "Diagnostics.SlowSqlMs=500"
+    ) `
+    -Workspace "E:\Temp\FindSeriesV5-Workspace"
+
+
+# ============================================================================
+# SUCHFENSTER 2 – DENTIST / DENTAL UNIT
+# ============================================================================
+
+.\FindSeries.ps1 `
+    -Project "Dentist" `
+    -Mode Resume `
+    -Profile Fast `
+    -Category @(
+        "Category:Dental_units"
+    ) `
+    -KeywordGroup @(
+        "Dentist"
+        "Dental Unit"
+        "Dentistry"
+        "Caries"
+    ) `
+    -Language "en" `
+    -Domain "Dentistry" `
+    -Set @(
+        # --------------------------------------------------------------------
+        # (1) FACHLICHE UND SUCH-PARAMETER
+        # --------------------------------------------------------------------
+
+        # Kategoriegraph
+        "Category.Depth=2"
+        "Category.MaxCategories=10000"
+        "Category.MaxFiles=500000"
+        "Category.MaxChildrenPerCategory=150"
+        "Category.PruneAfterDepth=1"
+        "Category.DriftGuard=Strict"
+
+        # Begriffssuche
+        "Keyword.MaxLanguages=0"
+        "Keyword.MaxSynonymsPerConcept=5"
+        "Keyword.MaxQueriesPerLanguage=6"
+        "Keyword.MaxQueries=600"
+        "Keyword.MaxResultsPerQuery=500"
+
+        "Metadata.Level=2"
+
+        # Nachbarsuche
+        "Neighbors.Enabled=true"
+        "Neighbors.MaxSeeds=30"
+        "Neighbors.MinScore=70"
+        "Neighbors.Minutes=60"
+        "Neighbors.MaxResultsPerSeed=50"
+        "Neighbors.MaxUploaderScan=1000"
+        "Neighbors.MaxApiPagesPerSeed=5"
+        "Neighbors.MaxSecondsPerSeed=180"
+        "Neighbors.SeriesExpansion=true"
+
+        "Download.MinScore=40"
+
+        # --------------------------------------------------------------------
+        # (2) PERFORMANCE- UND TECHNISCHE EINSTELLUNGEN
+        # --------------------------------------------------------------------
+
+        "Api.Contact=mailto:pschrey@gmail.com"
+        "Api.DelayMs=1200"
+        "Api.Retries=12"
+
+        "Category.Workers=1"
+        "Keyword.Workers=1"
+
+        "Download.Workers=4"
+        "Download.DelayMs=1370"
+        "Download.AutoTune=false"
+        "Download.ReuseBatchSize=5000"
+        "Download.ClaimBatchSize=4"
+        "Download.CompletionBatchSize=4"
+        "Download.WorkerStartSpacingSeconds=15"
+
+        "Diagnostics.Profile=true"
+        "Diagnostics.Console=false"
+        "Diagnostics.SlowSqlMs=500"
+    ) `
+    -Workspace "E:\Temp\FindSeriesV5-Workspace"
+
+
+# ============================================================================
+# SUCHFENSTER 3 – DENTAL CONTEXT SEARCH
+# Keine Startkategorie: Es läuft die kombinierte Begriffssuche.
+# ============================================================================
+
+.\FindSeries.ps1 `
+    -Project "Dental_Context_Search" `
+    -Mode Resume `
+    -Profile Balanced `
+    -KeywordGroup @(
+        "Patient + Behandlungsstuhl"
+        "Zahnarzt + Patient"
+        "Zahnarzt + Behandlung"
+        "Zahnarztpraxis + Behandlungsraum"
+        "Zahn::Q553 + Karies::Q133772"
+        "Zahn::Q553 + Füllung::Q907359"
+        "Zahn::Q553 + Amalgam::Q898259"
+    ) `
+    -Language "de" `
+    -Domain "Dentistry" `
+    -Set @(
+        # --------------------------------------------------------------------
+        # (1) FACHLICHE UND SUCH-PARAMETER
+        # --------------------------------------------------------------------
+
+        # Kombinations-, Sprach- und Ergebnistiefe
+        "Keyword.MaxLanguages=0"
+        "Keyword.MaxSynonymsPerConcept=5"
+        "Keyword.MaxQueriesPerLanguage=12"
+        "Keyword.MaxQueries=4000"
+        "Keyword.MaxResultsPerQuery=500"
+
+        "Metadata.Level=2"
+
+        # Nachbarsuche
+        "Neighbors.Enabled=true"
+        "Neighbors.MaxSeeds=30"
+        "Neighbors.MinScore=70"
+        "Neighbors.Minutes=120"
+        "Neighbors.MaxResultsPerSeed=50"
+        "Neighbors.MaxUploaderScan=1000"
+        "Neighbors.MaxApiPagesPerSeed=10"
+        "Neighbors.MaxSecondsPerSeed=300"
+        "Neighbors.SeriesExpansion=true"
+
+        # Strengere Download-Schwelle für die breitere Kontextsuche
+        "Download.MinScore=50"
+
+        # --------------------------------------------------------------------
+        # (2) PERFORMANCE- UND TECHNISCHE EINSTELLUNGEN
+        # --------------------------------------------------------------------
+
+        "Api.Contact=mailto:pschrey@gmail.com"
+        "Api.DelayMs=1200"
+        "Api.Retries=12"
+
+        "Keyword.Workers=1"
+
+        "Download.Workers=4"
+        "Download.DelayMs=1370"
+        "Download.AutoTune=false"
+        "Download.ReuseBatchSize=5000"
+        "Download.ClaimBatchSize=4"
+        "Download.CompletionBatchSize=4"
+        "Download.WorkerStartSpacingSeconds=15"
+
+        "Diagnostics.Profile=true"
+        "Diagnostics.Console=false"
+        "Diagnostics.SlowSqlMs=500"
+    ) `
+    -Workspace "E:\Temp\FindSeriesV5-Workspace"
+
+
+# ============================================================================
+# SUCHFENSTER 4 – TIEFER KATEGORIEGRAPH DENTISTRY
+# Keine Begriffssuche und keine Nachbarsuche.
+# ============================================================================
+
+.\FindSeries.ps1 `
+    -Project "Cat_Dentistry" `
+    -Mode Resume `
+    -Profile Deep `
+    -Category @(
+        "Category:Dentistry"
+    ) `
+    -Set @(
+        # --------------------------------------------------------------------
+        # (1) FACHLICHE UND SUCH-PARAMETER
+        # --------------------------------------------------------------------
+
+        # Tiefer Kategoriegraph
+        "Category.Depth=10"
+        "Category.MaxCategories=10000"
+        "Category.MaxFiles=500000"
+        "Category.MaxChildrenPerCategory=500"
+        "Category.PruneAfterDepth=3"
+        "Category.DriftGuard=Strict"
+        "Category.ExcludeRegex=(?i)(smiling|portraits of|births|deaths|politicians by|political people|royal family|royalty|sportspeople by|actors by|actresses by|celebrities by|events by year|photographs by year)"
+
+        "Metadata.Level=2"
+
+        # Ausschließlich Kategoriegraph
+        "Neighbors.Enabled=false"
+
+        # Alle gefundenen Dateien herunterladen
+        "Download.MinScore=0"
+
+        # --------------------------------------------------------------------
+        # (2) PERFORMANCE- UND TECHNISCHE EINSTELLUNGEN
+        # --------------------------------------------------------------------
+
+        "Api.Contact=mailto:pschrey@gmail.com"
+        "Api.DelayMs=1200"
+        "Api.Retries=12"
+
+        "Category.Workers=4"
+
+        "Download.Workers=4"
+        "Download.DelayMs=1370"
+        "Download.AutoTune=true"
+        "Download.AutoTuneMinDelayMs=1000"
+        "Download.AutoTuneMinImprovementPct=2"
+        "Download.ReuseBatchSize=5000"
+        "Download.ClaimBatchSize=8"
+        "Download.CompletionBatchSize=4"
+        "Download.WorkerStartSpacingSeconds=15"
+
+        "Diagnostics.Profile=true"
+        "Diagnostics.Console=false"
+        "Diagnostics.SlowSqlMs=500"
+    ) `
+    -Workspace "E:\Temp\FindSeriesV5-Workspace"
+
+
+# ============================================================================
+# STATUS
+# ============================================================================
+
+.\Get-FindSeriesStatus.ps1 `
+    -Project "Zahnmedizin" `
+    -Workspace "E:\Temp\FindSeriesV5-Workspace" `
+    -Errors
+
+
+# ============================================================================
+# REVIEW-DATEIEN EXPORTIEREN UND ORDNER ÖFFNEN
+# MaxExports 0 = alle noch fehlenden Review-Dateien
+# ============================================================================
+
+.\Open-FindSeriesReview.ps1 `
+    -Project "Zahnmedizin" `
+    -Workspace "E:\Temp\FindSeriesV5-Workspace" `
+    -MaxExports 0
+
+
+# ============================================================================
+# NACH DEM LÖSCHEN UNPASSENDER REVIEW-BILDER SYNCHRONISIEREN
+# ============================================================================
+
+.\Sync-FindSeriesReview.ps1 `
+    -Project "Zahnmedizin" `
+    -Workspace "E:\Temp\FindSeriesV5-Workspace"
+
+
+# ============================================================================
+# DOWNLOAD-MONITOR SEPARAT ÖFFNEN
+# ============================================================================
+
+.\Show-FindSeriesDownloadMonitor.ps1 `
+    -Project "Zahnmedizin" `
+    -Workspace "E:\Temp\FindSeriesV5-Workspace" `
+    -Mode Gui

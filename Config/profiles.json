@@ -1,0 +1,293 @@
+﻿{
+  "Fast": {
+    "Api": {
+      "DelayMs": 1000,
+      "Retries": 6,
+      "MaxLag": 0,
+      "Contact": "mailto:pschrey@gmail.com"
+    },
+    "Category": {
+      "Depth": 2,
+      "MaxCategories": 500,
+      "MaxFiles": 50000,
+      "Workers": 2,
+      "DriftGuard": "Strict",
+      "PruneAfterDepth": 1,
+      "MaxChildrenPerCategory": 150,
+      "ExcludeRegex": "(?i)(births|deaths|people by|men by|women by|children by|celebrit|entertainer|actors|actresses|politicians|sportspeople|events by year|photographs by year|smiling people|portraits of)"
+    },
+    "Keyword": {
+      "Workers": 1,
+      "MaxLanguages": 50,
+      "MaxSynonymsPerConcept": 3,
+      "MaxQueriesPerLanguage": 6,
+      "MaxQueries": 1000,
+      "MaxResultsPerQuery": 300,
+      "WriteBatchSize": 60,
+      "HeartbeatSeconds": 60
+    },
+    "Metadata": {
+      "Workers": 4,
+      "BatchSize": 50,
+      "Level": 1,
+      "SeedBatchSize": 2000,
+      "MaxEncodedTitleChars": 3500
+    },
+    "Neighbors": {
+      "Enabled": false,
+      "Workers": 2,
+      "MaxSeeds": 20,
+      "MinScore": 70,
+      "Minutes": 60,
+      "MaxResultsPerSeed": 50,
+      "MaxUploaderScan": 500,
+      "SeriesExpansion": false,
+      "MaxApiPagesPerSeed": 5,
+      "MaxSecondsPerSeed": 180,
+      "UploaderMode": "Current",
+      "SeedBatchSize": 500
+    },
+    "Download": {
+      "Workers": 1,
+      "MinScore": 40,
+      "VerifySha1": false,
+      "SeedBatchSize": 2000,
+      "DelayMs": 2000,
+      "Retries": 6,
+      "TimeoutSeconds": 300,
+      "AutoTune": true,
+      "ClaimBatchSize": 4,
+      "DelayCacheSeconds": 5,
+      "DelayIncreasePercent": 25,
+      "DelayIncreaseMinMs": 20,
+      "DelayIncreaseMaxMs": 100,
+      "DelayDecreasePercent": 10,
+      "DelayDecreaseMinMs": 20,
+      "DelayDecreaseMaxMs": 100,
+      "BurstRecoverySuccesses": 8,
+      "BurstRecoverySeconds": 20,
+      "ThrottlePauseSeconds": 20,
+      "ThrottleCarryoverSeconds": 900,
+      "WorkerStartSpacingSeconds": 15,
+      "RecoveryWorkerSpacingMs": 3000,
+      "ReuseBatchSize": 5000,
+      "AutoTuneMinDelayMs": 1000,
+      "AutoTuneMinImprovementPct": 2.0,
+      "CompletionBatchSize": 4
+    },
+    "Progress": {
+      "PollSeconds": 2,
+      "WorkerRestarts": 2
+    },
+    "Task": {
+      "MaxAttempts": 4
+    },
+    "Diagnostics": {
+      "Profile": false,
+      "Console": true,
+      "SlowSqlMs": 2000,
+      "OutputFile": "Diagnostics\\performance.csv"
+    },
+    "Review": {
+      "Enabled": true,
+      "BatchSize": 500,
+      "MaxExportsPerSync": 5000,
+      "LinkMode": "Auto",
+      "RemoveOriginalOnReject": true
+    }
+  },
+  "Balanced": {
+    "Api": {
+      "DelayMs": 1000,
+      "Retries": 8,
+      "MaxLag": 0,
+      "Contact": "mailto:pschrey@gmail.com"
+    },
+    "Category": {
+      "Depth": 3,
+      "MaxCategories": 2000,
+      "MaxFiles": 100000,
+      "Workers": 3,
+      "DriftGuard": "Strict",
+      "PruneAfterDepth": 2,
+      "MaxChildrenPerCategory": 300,
+      "ExcludeRegex": "(?i)(births|deaths|events by year|photographs by year|celebrities by|actors by|actresses by|politicians by|sportspeople by)"
+    },
+    "Keyword": {
+      "Workers": 1,
+      "MaxLanguages": 0,
+      "MaxSynonymsPerConcept": 5,
+      "MaxQueriesPerLanguage": 12,
+      "MaxQueries": 4000,
+      "MaxResultsPerQuery": 500,
+      "WriteBatchSize": 60,
+      "HeartbeatSeconds": 60
+    },
+    "Metadata": {
+      "Workers": 4,
+      "BatchSize": 50,
+      "Level": 2,
+      "SeedBatchSize": 2000,
+      "MaxEncodedTitleChars": 3500
+    },
+    "Neighbors": {
+      "Enabled": true,
+      "Workers": 2,
+      "MaxSeeds": 50,
+      "MinScore": 70,
+      "Minutes": 90,
+      "MaxResultsPerSeed": 100,
+      "MaxUploaderScan": 1000,
+      "SeriesExpansion": true,
+      "MaxApiPagesPerSeed": 10,
+      "MaxSecondsPerSeed": 300,
+      "UploaderMode": "Current",
+      "SeedBatchSize": 500
+    },
+    "Download": {
+      "Workers": 1,
+      "MinScore": 40,
+      "VerifySha1": false,
+      "SeedBatchSize": 2000,
+      "DelayMs": 2000,
+      "Retries": 6,
+      "TimeoutSeconds": 300,
+      "AutoTune": true,
+      "ClaimBatchSize": 4,
+      "DelayCacheSeconds": 5,
+      "DelayIncreasePercent": 25,
+      "DelayIncreaseMinMs": 20,
+      "DelayIncreaseMaxMs": 100,
+      "DelayDecreasePercent": 10,
+      "DelayDecreaseMinMs": 20,
+      "DelayDecreaseMaxMs": 100,
+      "BurstRecoverySuccesses": 8,
+      "BurstRecoverySeconds": 20,
+      "ThrottlePauseSeconds": 20,
+      "ThrottleCarryoverSeconds": 900,
+      "WorkerStartSpacingSeconds": 15,
+      "RecoveryWorkerSpacingMs": 3000,
+      "ReuseBatchSize": 5000,
+      "AutoTuneMinDelayMs": 1000,
+      "AutoTuneMinImprovementPct": 2.0,
+      "CompletionBatchSize": 4
+    },
+    "Progress": {
+      "PollSeconds": 2,
+      "WorkerRestarts": 2
+    },
+    "Task": {
+      "MaxAttempts": 4
+    },
+    "Diagnostics": {
+      "Profile": false,
+      "Console": true,
+      "SlowSqlMs": 2000,
+      "OutputFile": "Diagnostics\\performance.csv"
+    },
+    "Review": {
+      "Enabled": true,
+      "BatchSize": 500,
+      "MaxExportsPerSync": 5000,
+      "LinkMode": "Auto",
+      "RemoveOriginalOnReject": true
+    }
+  },
+  "Deep": {
+    "Api": {
+      "DelayMs": 1000,
+      "Retries": 12,
+      "MaxLag": 0,
+      "Contact": "mailto:pschrey@gmail.com"
+    },
+    "Category": {
+      "Depth": 5,
+      "MaxCategories": 10000,
+      "MaxFiles": 500000,
+      "Workers": 4,
+      "DriftGuard": "Warn",
+      "PruneAfterDepth": 3,
+      "MaxChildrenPerCategory": 500,
+      "ExcludeRegex": "(?i)(births|deaths|events by year|photographs by year)"
+    },
+    "Keyword": {
+      "Workers": 2,
+      "MaxLanguages": 0,
+      "MaxSynonymsPerConcept": 8,
+      "MaxQueriesPerLanguage": 25,
+      "MaxQueries": 15000,
+      "MaxResultsPerQuery": 1000,
+      "WriteBatchSize": 60,
+      "HeartbeatSeconds": 60
+    },
+    "Metadata": {
+      "Workers": 6,
+      "BatchSize": 50,
+      "Level": 2,
+      "SeedBatchSize": 2000,
+      "MaxEncodedTitleChars": 3500
+    },
+    "Neighbors": {
+      "Enabled": true,
+      "Workers": 3,
+      "MaxSeeds": 200,
+      "MinScore": 65,
+      "Minutes": 180,
+      "MaxResultsPerSeed": 300,
+      "MaxUploaderScan": 3000,
+      "SeriesExpansion": true,
+      "MaxApiPagesPerSeed": 25,
+      "MaxSecondsPerSeed": 600,
+      "UploaderMode": "Current",
+      "SeedBatchSize": 500
+    },
+    "Download": {
+      "Workers": 1,
+      "MinScore": 40,
+      "VerifySha1": false,
+      "SeedBatchSize": 2000,
+      "DelayMs": 2000,
+      "Retries": 6,
+      "TimeoutSeconds": 300,
+      "AutoTune": true,
+      "ClaimBatchSize": 4,
+      "DelayCacheSeconds": 5,
+      "DelayIncreasePercent": 25,
+      "DelayIncreaseMinMs": 20,
+      "DelayIncreaseMaxMs": 100,
+      "DelayDecreasePercent": 10,
+      "DelayDecreaseMinMs": 20,
+      "DelayDecreaseMaxMs": 100,
+      "BurstRecoverySuccesses": 8,
+      "BurstRecoverySeconds": 20,
+      "ThrottlePauseSeconds": 20,
+      "ThrottleCarryoverSeconds": 900,
+      "WorkerStartSpacingSeconds": 15,
+      "RecoveryWorkerSpacingMs": 3000,
+      "ReuseBatchSize": 5000,
+      "AutoTuneMinDelayMs": 1000,
+      "AutoTuneMinImprovementPct": 2.0,
+      "CompletionBatchSize": 4
+    },
+    "Progress": {
+      "PollSeconds": 2,
+      "WorkerRestarts": 2
+    },
+    "Task": {
+      "MaxAttempts": 4
+    },
+    "Diagnostics": {
+      "Profile": false,
+      "Console": true,
+      "SlowSqlMs": 2000,
+      "OutputFile": "Diagnostics\\performance.csv"
+    },
+    "Review": {
+      "Enabled": true,
+      "BatchSize": 500,
+      "MaxExportsPerSync": 5000,
+      "LinkMode": "Auto",
+      "RemoveOriginalOnReject": true
+    }
+  }
+}
