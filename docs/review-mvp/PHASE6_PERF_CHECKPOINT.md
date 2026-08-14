@@ -1,7 +1,7 @@
 # Phase 6 Performance Checkpoint (Draft)
 
 **Branch:** `review-mvp`  
-**Commit SHA:** nach Push  
+**Commit SHA:** `c54ae4ba5b7989c874efb7777e60f9350f86ee9c`  
 **Date:** 2026-08-15  
 **Project:** 7  
 **Media count (`project_media`):** **184 991** (≥100k ✓)
