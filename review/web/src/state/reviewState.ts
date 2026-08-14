@@ -157,7 +157,13 @@ export function reviewUiReducer(state: ReviewUiState, action: ReviewUiAction): R
     case 'set_uploader':
       return { ...state, uploader: action.uploader, ...clearSelection() };
     case 'set_focus_relation':
-      return { ...state, focusRelation: action.relation, ...clearSelection() };
+      // Single shelf drilldown: focus relation clears group drilldown
+      return {
+        ...state,
+        focusRelation: action.relation,
+        drilldown: null,
+        ...clearSelection(),
+      };
     case 'clear_focus_relation':
       return { ...state, focusRelation: null, ...clearSelection() };
     case 'set_group_by': {
@@ -168,6 +174,7 @@ export function reviewUiReducer(state: ReviewUiState, action: ReviewUiAction): R
           ...state,
           groupBy: action.groupBy,
           drilldown: null,
+          focusRelation: null,
           ...clearSelection(),
         };
       }
@@ -181,7 +188,13 @@ export function reviewUiReducer(state: ReviewUiState, action: ReviewUiAction): R
         ...clearSelection(),
       };
     case 'set_drilldown':
-      return { ...state, drilldown: action.drilldown, ...clearSelection() };
+      // Single shelf drilldown: group drilldown clears focus relation
+      return {
+        ...state,
+        drilldown: action.drilldown,
+        focusRelation: null,
+        ...clearSelection(),
+      };
     case 'clear_drilldown':
       return { ...state, drilldown: null, ...clearSelection() };
     case 'remove_filter': {

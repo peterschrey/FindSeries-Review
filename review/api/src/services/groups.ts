@@ -69,28 +69,16 @@ LEFT JOIN review_provenance_type_map rpm ON rpm.source_type = d.source_type`,
         joinParams: (projectId) => [projectId],
       };
     case 'category':
+      // Group keys use indexed origin_category_id only (fast path).
+      // Title/source_value fallback remains in filter SQL (categoryMediaSql), not here.
       return {
-        selectKey: `CAST(resolved_cat.category_id AS TEXT)`,
+        selectKey: `CAST(d.origin_category_id AS TEXT)`,
         join: `
-JOIN (
-  SELECT d.media_id AS media_id, d.origin_category_id AS category_id
-  FROM discoveries d
-  WHERE d.project_id = ? AND d.source_type = 'category' AND d.origin_category_id IS NOT NULL
-  UNION
-  SELECT d.media_id, c.id AS category_id
-  FROM discoveries d
-  JOIN categories c ON c.normalized_title = lower(d.source_value)
-  JOIN project_categories pc ON pc.project_id = ? AND pc.category_id = c.id
-  WHERE d.project_id = ?
-    AND d.source_type = 'category'
-    AND d.origin_category_id IS NULL
-    AND d.source_value IS NOT NULL AND trim(d.source_value) <> ''
-    AND (
-      SELECT COUNT(*) FROM categories c2
-      WHERE c2.normalized_title = lower(d.source_value)
-    ) = 1
-) resolved_cat ON resolved_cat.media_id = fm.media_id`,
-        joinParams: (projectId) => [projectId, projectId, projectId],
+JOIN discoveries d
+  ON d.project_id = ? AND d.media_id = fm.media_id
+ AND d.source_type = 'category'
+ AND d.origin_category_id IS NOT NULL`,
+        joinParams: (projectId) => [projectId],
       };
     default:
       return { selectKey: `'all'`, join: '', joinParams: () => [] };
@@ -108,7 +96,11 @@ function drilldownFor(
     statuses: base.statuses,
     q: base.q,
     sourceTypes: base.sourceTypes,
+    alsoSourceTypes: base.alsoSourceTypes,
     categoryIds: base.categoryIds,
+    alsoCategoryIds: base.alsoCategoryIds,
+    categoryIncludeDescendants: base.categoryIncludeDescendants,
+    alsoCategoryIncludeDescendants: base.alsoCategoryIncludeDescendants,
     uploader: base.uploader,
     seriesKey: base.seriesKey,
     seedKey: base.seedKey,
@@ -128,13 +120,25 @@ function drilldownFor(
       return { ...common, seedKey: key };
     case 'provenance': {
       const sourceType = key.includes(':') ? key.slice(key.indexOf(':') + 1) : key;
+      if (base.sourceTypes?.length) {
+        return { ...common, alsoSourceTypes: [sourceType] };
+      }
       return { ...common, sourceTypes: [sourceType] };
     }
     case 'category': {
       const id = Number(key);
+      if (!Number.isFinite(id)) return common;
+      if (base.categoryIds?.length) {
+        return {
+          ...common,
+          alsoCategoryIds: [id],
+          alsoCategoryIncludeDescendants: base.categoryIncludeDescendants !== false,
+        };
+      }
       return {
         ...common,
-        categoryIds: Number.isFinite(id) ? [id] : common.categoryIds,
+        categoryIds: [id],
+        categoryIncludeDescendants: base.categoryIncludeDescendants,
       };
     }
     default:
@@ -169,21 +173,22 @@ export function queryGroups(db: ReviewDb, q: GroupQuery): GroupsResponse {
     categoryIds: q.categoryIds,
     alsoCategoryIds: q.alsoCategoryIds,
     alsoSourceTypes: q.alsoSourceTypes,
+    categoryIncludeDescendants: q.categoryIncludeDescendants,
+    alsoCategoryIncludeDescendants: q.alsoCategoryIncludeDescendants,
     uploader: q.uploader,
     seriesKey: q.seriesKey,
     seedKey: q.seedKey,
     parentMediaId: q.parentMediaId,
     mediaIds: q.mediaIds,
   };
-  const base = buildFilteredMediaCte(filter, 'count');
   const { selectKey, join, joinParams } = groupKeyExpr(q.groupBy);
   const jp = joinParams(q.projectId);
 
-  const keyBase = base;
-
-  const keyRows = db
+  // Key discovery respects UI status chips (same as before).
+  const uiBase = buildFilteredMediaCte(filter, 'count');
+  const keyOnly = db
     .prepare(
-      `WITH fm AS (${keyBase.sql})
+      `WITH fm AS (${uiBase.sql})
        SELECT ${selectKey} AS gkey, COUNT(DISTINCT fm.media_id) AS approx_total
        FROM fm
        ${join}
@@ -192,31 +197,105 @@ export function queryGroups(db: ReviewDb, q: GroupQuery): GroupsResponse {
        ORDER BY approx_total DESC
        LIMIT ?`,
     )
-    .all(...keyBase.params, ...jp, q.limit) as Array<{ gkey: string; approx_total: number }>;
+    .all(...uiBase.params, ...jp, q.limit) as Array<{ gkey: string; approx_total: number }>;
 
-  const groups: GroupCard[] = keyRows.map((r) => {
+  if (!keyOnly.length) {
+    const statusCounts = computeStatusCounts(db, filter, { breakdownAllStatuses: true });
+    return { groups: [], resultTotal: statusCounts.total, statusCounts };
+  }
+
+  const keys = keyOnly.map((r) => String(r.gkey));
+  const keyPlaceholders = keys.map(() => '?').join(',');
+
+  // One status-breakdown pass for the selected keys (all 4 statuses — matches prior DoD).
+  const allStatusFilter: MediaFilter = {
+    ...filter,
+    statuses: ['unreviewed', 'keep', 'reject', 'unsure'],
+  };
+  const allBase = buildFilteredMediaCte(allStatusFilter, 'count');
+  const statRows = db
+    .prepare(
+      `WITH fm AS (${allBase.sql}),
+       tagged AS (
+         SELECT DISTINCT fm.media_id AS media_id,
+                fm.review_status AS review_status,
+                ${selectKey} AS gkey
+         FROM fm
+         ${join}
+         WHERE ${selectKey} IS NOT NULL
+           AND ${selectKey} IN (${keyPlaceholders})
+       )
+       SELECT gkey,
+              COUNT(*) AS total,
+              SUM(CASE WHEN review_status='unreviewed' THEN 1 ELSE 0 END) AS unreviewed,
+              SUM(CASE WHEN review_status='keep' THEN 1 ELSE 0 END) AS keep,
+              SUM(CASE WHEN review_status='reject' THEN 1 ELSE 0 END) AS reject,
+              SUM(CASE WHEN review_status='unsure' THEN 1 ELSE 0 END) AS unsure
+       FROM tagged
+       GROUP BY gkey`,
+    )
+    .all(...allBase.params, ...jp, ...keys) as Array<{
+    gkey: string;
+    total: number;
+    unreviewed: number;
+    keep: number;
+    reject: number;
+    unsure: number;
+  }>;
+  const statsByKey = new Map(statRows.map((r) => [String(r.gkey), r]));
+
+  const sampleByKey = new Map<string, MediaCard[]>();
+  if (q.sampleSize > 0) {
+    const sampleRows = db
+      .prepare(
+        `WITH fm AS (${allBase.sql}),
+         tagged AS (
+           SELECT DISTINCT fm.media_id AS media_id,
+                  fm.title AS title,
+                  fm.uploader AS uploader,
+                  fm.timestamp AS timestamp,
+                  fm.score AS score,
+                  fm.review_status AS review_status,
+                  ${selectKey} AS gkey
+           FROM fm
+           ${join}
+           WHERE ${selectKey} IS NOT NULL
+             AND ${selectKey} IN (${keyPlaceholders})
+         ),
+         ranked AS (
+           SELECT *,
+                  ROW_NUMBER() OVER (PARTITION BY gkey ORDER BY media_id ASC) AS rn
+           FROM tagged
+         )
+         SELECT * FROM ranked WHERE rn <= ?
+         ORDER BY gkey, media_id`,
+      )
+      .all(...allBase.params, ...jp, ...keys, q.sampleSize) as Record<string, unknown>[];
+    for (const row of sampleRows) {
+      const k = String(row.gkey);
+      const list = sampleByKey.get(k) ?? [];
+      list.push(mapSample(row));
+      sampleByKey.set(k, list);
+    }
+  }
+
+  const groups: GroupCard[] = keyOnly.map((r) => {
     const key = String(r.gkey ?? '');
     const drill = drilldownFor(q.groupBy, key, q.projectId, filter);
-    const accurate = computeStatusCounts(db, drill, { breakdownAllStatuses: true });
-    let sampleMedia: MediaCard[] = [];
-    if (q.sampleSize > 0) {
-      const sampleBase = buildFilteredMediaCte(drill);
-      // Deterministic samples: lowest media_id (stable, not random)
-      sampleMedia = (
-        db
-          .prepare(
-            `WITH fm AS (${sampleBase.sql})
-             SELECT * FROM fm ORDER BY media_id ASC LIMIT ?`,
-          )
-          .all(...sampleBase.params, q.sampleSize) as Record<string, unknown>[]
-      ).map(mapSample);
-    }
+    const st = statsByKey.get(key);
+    const accurate = {
+      unreviewed: Number(st?.unreviewed ?? 0),
+      keep: Number(st?.keep ?? 0),
+      reject: Number(st?.reject ?? 0),
+      unsure: Number(st?.unsure ?? 0),
+      total: Number(st?.total ?? r.approx_total ?? 0),
+    };
     return {
       key,
       label: labelFor(db, q.groupBy, key),
       total: accurate.total,
       statusCounts: accurate,
-      sampleMedia,
+      sampleMedia: sampleByKey.get(key) ?? [],
       drilldown: drill,
     };
   });

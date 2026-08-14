@@ -61,6 +61,7 @@ export function listCategoryNodes(db: ReviewDb, q: CategoryNodeQuery): CategoryN
         q: q.filter.q,
         sourceTypes: q.filter.sourceTypes,
         categoryIds: [r.category_id],
+        categoryIncludeDescendants: q.filter.categoryIncludeDescendants,
         uploader: q.filter.uploader,
         seriesKey: q.filter.seriesKey,
         seedKey: q.filter.seedKey,
@@ -95,10 +96,15 @@ export function countCategorySubtree(db: ReviewDb, projectId: number, categoryId
 }
 
 export function queryFacets(db: ReviewDb, filter: MediaFilter): FacetsResponse {
-  const base = buildFilteredMediaCte(filter);
+  // Provenance facet: exclude own dimension (sourceTypes); keep alsoSourceTypes (drilldown AND).
+  const provenanceFilter: MediaFilter = {
+    ...filter,
+    sourceTypes: undefined,
+  };
+  const provenanceBase = buildFilteredMediaCte(provenanceFilter);
   const provenance = db
     .prepare(
-      `WITH fm AS (${base.sql})
+      `WITH fm AS (${provenanceBase.sql})
        SELECT d.source_type AS sourceType,
               COALESCE(rpm.family, 'unknown') AS family,
               COUNT(DISTINCT fm.media_id) AS count
@@ -109,15 +115,21 @@ export function queryFacets(db: ReviewDb, filter: MediaFilter): FacetsResponse {
        ORDER BY count DESC
        LIMIT 100`,
     )
-    .all(...base.params, filter.projectId) as Array<{
+    .all(...provenanceBase.params, filter.projectId) as Array<{
     sourceType: string;
     family: string;
     count: number;
   }>;
 
+  // Uploader facet: exclude uploader filter (own dimension).
+  const uploaderFilter: MediaFilter = {
+    ...filter,
+    uploader: undefined,
+  };
+  const uploaderBase = buildFilteredMediaCte(uploaderFilter);
   const uploaders = db
     .prepare(
-      `WITH fm AS (${base.sql})
+      `WITH fm AS (${uploaderBase.sql})
        SELECT CASE
                 WHEN uploader IS NULL OR uploader = '' THEN NULL
                 ELSE uploader
@@ -131,7 +143,7 @@ export function queryFacets(db: ReviewDb, filter: MediaFilter): FacetsResponse {
        ORDER BY count DESC
        LIMIT 100`,
     )
-    .all(...base.params) as Array<{ uploader: string | null; count: number }>;
+    .all(...uploaderBase.params) as Array<{ uploader: string | null; count: number }>;
 
   return {
     provenance: provenance.map((p) => ({

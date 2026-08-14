@@ -146,6 +146,42 @@ describe('reviewUiState FRV-18/22/D', () => {
     expect(s.selectionAnchorId).toBe(3);
   });
 
+  it('single shelf: set_focus_relation clears drilldown and vice versa', () => {
+    let s = createInitialState(7);
+    s = reviewUiReducer(s, {
+      type: 'set_drilldown',
+      drilldown: {
+        kind: 'group',
+        key: 'x',
+        label: 'X',
+        patch: { seriesKey: 's1' },
+      },
+    });
+    expect(s.drilldown).not.toBeNull();
+    s = reviewUiReducer(s, {
+      type: 'set_focus_relation',
+      relation: {
+        kind: 'focus-relation',
+        key: 'series:Serie',
+        label: 'Fokus · Serie',
+        patch: { seriesKey: 's2' },
+      },
+    });
+    expect(s.focusRelation?.key).toBe('series:Serie');
+    expect(s.drilldown).toBeNull();
+    s = reviewUiReducer(s, {
+      type: 'set_drilldown',
+      drilldown: {
+        kind: 'group',
+        key: 'y',
+        label: 'Y',
+        patch: { uploader: 'A' },
+      },
+    });
+    expect(s.drilldown?.key).toBe('y');
+    expect(s.focusRelation).toBeNull();
+  });
+
   it('groupBy keeps selection without drilldown; clears with drilldown', () => {
     let s = createInitialState(7);
     s = reviewUiReducer(s, {

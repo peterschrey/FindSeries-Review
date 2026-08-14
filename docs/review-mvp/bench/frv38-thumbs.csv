@@ -1,0 +1,6 @@
+phase,n,p50_ms,p95_ms,mean_ms,extra
+cold,100,74.96,153.94,81.11,real
+warm,100,1.95,6.45,2.66,real
+generation_rate,200,,,15234.15,13.13 img/s
+concurrent,40,,,1180.98,40 parallel
+placeholder,1,,,,ok

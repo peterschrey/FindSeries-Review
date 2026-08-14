@@ -1,4 +1,4 @@
-# Applies Review-MVP migrations 100–104 idempotently on a DB copy.
+# Applies Review-MVP migrations 100–105 idempotently on a DB copy.
 # Review versions are tracked in review_schema_migrations only (never core schema_migrations).
 [CmdletBinding()]
 param(
@@ -16,13 +16,14 @@ if(-not $MigrationsDir){$MigrationsDir=Join-Path $root 'review\db\migrations'}
 if(-not(Test-Path -LiteralPath $SqlitePath)){throw "sqlite3 not found: $SqlitePath"}
 if(-not(Test-Path -LiteralPath $DatabasePath)){throw "database not found: $DatabasePath"}
 
-$versions=@(100,101,102,103,104)
+$versions=@(100,101,102,103,104,105)
 $files=@(
     '100_review_status.sql',
     '101_provenance_map.sql',
     '102_category_graph.sql',
     '103_series_keys.sql',
-    '104_similarity_meta.sql'
+    '104_similarity_meta.sql',
+    '105_review_perf_indexes.sql'
 )
 
 function Invoke-SqliteChecked {
@@ -102,12 +103,12 @@ Write-Host "Core schema_migrations after: $coreMigAfter"
 if($before -cne $after){throw "core counts changed: $before -> $after"}
 if($coreMigBefore -cne $coreMigAfter){throw "core schema_migrations changed by Review migrations: $coreMigBefore -> $coreMigAfter"}
 
-$leaked=@(Invoke-SqliteChecked $DatabasePath "SELECT version FROM schema_migrations WHERE version IN (100,101,102,103,104) ORDER BY version;")
+$leaked=@(Invoke-SqliteChecked $DatabasePath "SELECT version FROM schema_migrations WHERE version IN (100,101,102,103,104,105) ORDER BY version;")
 if(@($leaked | Where-Object { $_ -and $_.ToString().Trim() -ne '' }).Count -gt 0){
     throw ("Review versions leaked into core schema_migrations: {0}" -f ($leaked -join ','))
 }
 
-$applied=@(Invoke-SqliteChecked $DatabasePath "SELECT version FROM review_schema_migrations WHERE version IN (100,101,102,103,104) ORDER BY version;")
+$applied=@(Invoke-SqliteChecked $DatabasePath "SELECT version FROM review_schema_migrations WHERE version IN (100,101,102,103,104,105) ORDER BY version;")
 foreach($v in $versions){
     if($applied -notcontains [string]$v){throw "missing review_schema_migrations version $v"}
 }
@@ -124,5 +125,6 @@ Rollback (supported):
 2. Restore from the SQLite .backup file created with -Backup.
 3. Prefer backup-restore over SQL DROP scripts.
 
-SQL rollback file ROLLBACK_100_104.sql is best-effort only.
+SQL rollback file ROLLBACK_100_104.sql is best-effort only (pre-105).
+Migration 105 adds indexes only — drop via DROP INDEX IF EXISTS if needed.
 #>

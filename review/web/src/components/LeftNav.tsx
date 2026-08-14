@@ -1,10 +1,8 @@
-import { useCallback, useEffect, useState, type Dispatch } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch } from 'react';
 import type { CategoryNode, FacetsResponse } from '@findseries/review-shared';
 import type { ReviewUiAction, ReviewUiState } from '../state/reviewState';
-import { toGlobalMediaFilter } from '../state/reviewState';
 import { fetchCategoryNodes } from '../api/client';
-
-type TreeNode = CategoryNode & { expanded?: boolean; children?: TreeNode[] };
+import { categoryTreeCacheKey, toggleExpandedId } from './categoryTreeState';
 
 export function LeftNav({
   state,
@@ -15,26 +13,76 @@ export function LeftNav({
   dispatch: Dispatch<ReviewUiAction>;
   facets: FacetsResponse | null;
 }) {
-  const [roots, setRoots] = useState<TreeNode[]>([]);
-  const [childCache, setChildCache] = useState<Record<number, CategoryNode[]>>({});
+  const [roots, setRoots] = useState<CategoryNode[]>([]);
+  const [expandedIds, setExpandedIds] = useState<Set<number>>(() => new Set());
+  /** Children for the current cache generation only (keyed by categoryId). */
+  const [childrenCache, setChildrenCache] = useState<Record<number, CategoryNode[]>>({});
 
-  const loadRoots = useCallback(async (signal?: AbortSignal) => {
-    const base = toGlobalMediaFilter(state);
-    const res = await fetchCategoryNodes(
-      {
+  const cacheKey = useMemo(
+    () =>
+      categoryTreeCacheKey({
         projectId: state.projectId,
-        parentCategoryId: null,
-        filter: {
-          statuses: base.statuses,
-          q: base.q,
-          sourceTypes: base.sourceTypes,
-          uploader: base.uploader,
+        statuses: state.statuses,
+        q: state.q,
+        sourceTypes: state.sourceTypes,
+        uploader: state.uploader,
+        categoryIncludeDescendants: state.categoryIncludeDescendants,
+      }),
+    [
+      state.projectId,
+      state.statuses,
+      state.q,
+      state.sourceTypes,
+      state.uploader,
+      state.categoryIncludeDescendants,
+    ],
+  );
+
+  const prevProjectRef = useRef(state.projectId);
+  const prevKeyRef = useRef(cacheKey);
+
+  useEffect(() => {
+    if (prevProjectRef.current !== state.projectId) {
+      setExpandedIds(new Set());
+      setChildrenCache({});
+      prevProjectRef.current = state.projectId;
+    } else if (prevKeyRef.current !== cacheKey) {
+      setChildrenCache({});
+    }
+    prevKeyRef.current = cacheKey;
+  }, [state.projectId, cacheKey]);
+
+  const countFilter = useMemo(
+    () => ({
+      statuses: state.statuses,
+      q: state.q.trim() || undefined,
+      sourceTypes: state.sourceTypes,
+      uploader: state.uploader,
+      categoryIncludeDescendants: state.categoryIncludeDescendants,
+    }),
+    [
+      state.statuses,
+      state.q,
+      state.sourceTypes,
+      state.uploader,
+      state.categoryIncludeDescendants,
+    ],
+  );
+
+  const loadRoots = useCallback(
+    async (signal?: AbortSignal) => {
+      const res = await fetchCategoryNodes(
+        {
+          projectId: state.projectId,
+          parentCategoryId: null,
+          filter: countFilter,
         },
-      },
-      signal,
-    );
-    setRoots(res.nodes.map((n) => ({ ...n, expanded: false })));
-  }, [state]);
+        signal,
+      );
+      setRoots(res.nodes);
+    },
+    [state.projectId, countFilter],
+  );
 
   useEffect(() => {
     const ac = new AbortController();
@@ -42,35 +90,21 @@ export function LeftNav({
       /* ignore */
     });
     return () => ac.abort();
-  }, [loadRoots]);
+  }, [loadRoots, cacheKey]);
 
-  const toggleExpand = async (node: TreeNode) => {
-    if (node.expanded) {
-      setRoots((prev) =>
-        prev.map((r) => (r.categoryId === node.categoryId ? { ...r, expanded: false } : r)),
-      );
+  const toggleExpand = async (node: CategoryNode) => {
+    if (expandedIds.has(node.categoryId)) {
+      setExpandedIds((prev) => toggleExpandedId(prev, node.categoryId));
       return;
     }
-    let children = childCache[node.categoryId];
-    if (!children) {
-      const res = await fetchCategoryNodes({
-        projectId: state.projectId,
-        parentCategoryId: node.categoryId,
-        filter: {
-          statuses: state.statuses,
-          q: state.q.trim() || undefined,
-          sourceTypes: state.sourceTypes,
-          uploader: state.uploader,
-        },
-      });
-      children = res.nodes;
-      setChildCache((c) => ({ ...c, [node.categoryId]: children! }));
-    }
-    setRoots((prev) =>
-      prev.map((r) =>
-        r.categoryId === node.categoryId ? { ...r, expanded: true, children } : r,
-      ),
-    );
+    setExpandedIds((prev) => toggleExpandedId(prev, node.categoryId));
+    if (childrenCache[node.categoryId]) return;
+    const res = await fetchCategoryNodes({
+      projectId: state.projectId,
+      parentCategoryId: node.categoryId,
+      filter: countFilter,
+    });
+    setChildrenCache((c) => ({ ...c, [node.categoryId]: res.nodes }));
   };
 
   const toggleCategory = (id: number, ctrl: boolean) => {
@@ -91,7 +125,6 @@ export function LeftNav({
     const current = state.sourceTypes ?? [];
     let next: string[];
     if (ctrl) {
-      // Multi within facet = OR
       next = current.includes(sourceType)
         ? current.filter((x) => x !== sourceType)
         : [...current, sourceType];
@@ -104,14 +137,16 @@ export function LeftNav({
     });
   };
 
-  const renderNode = (node: TreeNode, depth: number) => {
+  const renderNode = (node: CategoryNode, depth: number) => {
     const selected = state.categoryIds?.includes(node.categoryId);
+    const expanded = expandedIds.has(node.categoryId);
+    const children = childrenCache[node.categoryId] ?? [];
     return (
       <div key={node.categoryId} style={{ marginLeft: depth * 8 }}>
         <div className="catRow">
           {node.hasChildren ? (
             <button type="button" className="catExp" onClick={() => void toggleExpand(node)}>
-              {node.expanded ? '▾' : '▸'}
+              {expanded ? '▾' : '▸'}
             </button>
           ) : (
             <span className="catExp spacer" />
@@ -125,8 +160,7 @@ export function LeftNav({
             <span className="count">{node.mediaCount ?? node.memberCountCached ?? node.childCount}</span>
           </button>
         </div>
-        {node.expanded &&
-          (node.children ?? []).map((ch) => renderNode({ ...ch, expanded: false }, depth + 1))}
+        {expanded && children.map((ch) => renderNode(ch, depth + 1))}
       </div>
     );
   };

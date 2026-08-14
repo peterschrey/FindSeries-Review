@@ -1,0 +1,38 @@
+run_id,cache,metric,p50_ms,p95_ms,mean_ms,n,media_count,rss_mb,note
+1,Cold,gallery,863.38,877.26,841.89,5,184991,107.8,
+1,Cold,groups_provenance,1639.01,1694.91,1630.95,5,184991,104.2,
+1,Cold,category_subtree,357.41,403.85,366.96,5,184991,104.2,
+1,Cold,category_gallery,1520.48,1614.52,1537.06,5,184991,104,
+1,Cold,focus,1350.36,1356.83,1346.72,5,184991,104.5,
+1,Cold,facets,1520.03,1603.71,1550.88,5,184991,105.8,
+1,Cold,status_counts,5.21,7.17,5.68,5,184991,105.9,
+1,Cold,time_to_first_grid,863.38,877.26,841.89,5,184991,105.9,≈ gallery limit 120
+1,Warm,gallery,582.17,593.18,584.81,5,184991,105.9,
+1,Warm,groups_provenance,1557.97,1599.98,1551.29,5,184991,105.5,
+1,Warm,category_subtree,359.06,368.36,361.71,5,184991,105.5,
+1,Warm,category_gallery,1480.18,1506.3,1481.72,5,184991,104.7,
+1,Warm,focus,1302.28,1314.14,1305.45,5,184991,104.8,
+1,Warm,facets,1507.54,1518.19,1507.81,5,184991,105.7,
+1,Warm,status_counts,4.94,5.26,4.99,5,184991,105.7,
+1,N/A,scroll_long_tasks,,,,0,184991,105.7,N/A — API-only bench; browser Long Tasks not available
+2,Cold,gallery,568.75,596.47,577.01,5,184991,105.9,
+2,Cold,groups_provenance,1512.27,1570.85,1523.83,5,184991,106.2,
+2,Cold,category_subtree,351.99,359.79,353.98,5,184991,106.2,
+2,Cold,category_gallery,1464.86,1508.25,1470.7,5,184991,104.8,
+2,Cold,focus,1324.36,1340.22,1324.78,5,184991,104.9,
+2,Cold,facets,1519.31,1522.65,1512.57,5,184991,106.2,
+2,Cold,status_counts,5.26,6.94,5.66,5,184991,106.2,
+2,Cold,time_to_first_grid,568.75,596.47,577.01,5,184991,106.2,≈ gallery limit 120
+2,Warm,gallery,570.91,638.14,587.32,5,184991,106.2,
+2,Warm,groups_provenance,1490.41,1517.31,1496.14,5,184991,106.3,
+2,Warm,category_subtree,351.47,356.97,352.28,5,184991,106.3,
+2,Warm,category_gallery,1478.2,1545.73,1492.83,5,184991,105.5,
+2,Warm,focus,1309.44,1319.68,1311.22,5,184991,105.5,
+2,Warm,facets,1553.63,1566.9,1543.96,5,184991,106.3,
+2,Warm,status_counts,4.95,5.74,5.17,5,184991,106.3,
+2,N/A,scroll_long_tasks,,,,0,184991,106.3,N/A — API-only bench; browser Long Tasks not available
+1,Cold,thumbnail,22.11,,,20,184991,139.9,ok
+1,Warm,thumbnail,0.83,,,20,184991,139.9,ok
+1,N/A,bulk_1,1208.06,1208.06,1208.06,1,184991,136.1,undo_ms=30.9
+1,N/A,bulk_100,30.67,30.67,30.67,100,184991,136.7,undo_ms=25.1
+1,N/A,bulk_10000,1948.06,1948.06,1948.06,10000,184991,140.9,undo_ms=1643.3

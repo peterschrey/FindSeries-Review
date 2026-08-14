@@ -22,7 +22,11 @@ function baseFrom(q: FocusQuery): MediaFilter {
     statuses: q.baseFilter?.statuses,
     q: q.baseFilter?.q,
     sourceTypes: q.baseFilter?.sourceTypes,
+    alsoSourceTypes: q.baseFilter?.alsoSourceTypes,
     categoryIds: q.baseFilter?.categoryIds,
+    alsoCategoryIds: q.baseFilter?.alsoCategoryIds,
+    categoryIncludeDescendants: q.baseFilter?.categoryIncludeDescendants,
+    alsoCategoryIncludeDescendants: q.baseFilter?.alsoCategoryIncludeDescendants,
     uploader: q.baseFilter?.uploader,
     seriesKey: q.baseFilter?.seriesKey,
     seedKey: q.baseFilter?.seedKey,
@@ -84,7 +88,8 @@ function seedKeysForFocus(
          END AS seed_key
        FROM discoveries d
        LEFT JOIN review_provenance_type_map rpm ON rpm.source_type = d.source_type
-       WHERE d.project_id = ? AND d.media_id = ?`,
+       WHERE d.project_id = ? AND d.media_id = ?
+       ORDER BY seed_key COLLATE NOCASE`,
     )
     .all(projectId, focusMediaId) as Array<{ seed_key: string | null }>;
   return [...new Set(rows.map((r) => r.seed_key).filter((k): k is string => Boolean(k)))];
@@ -104,6 +109,60 @@ function focusIsNeighborSeed(db: ReviewDb, projectId: number, focusMediaId: numb
   return Boolean(row);
 }
 
+function categoryRelationFilter(base: MediaFilter, ids: number[]): MediaFilter {
+  if (base.categoryIds?.length) {
+    return {
+      ...base,
+      alsoCategoryIds: ids,
+      alsoCategoryIncludeDescendants: base.categoryIncludeDescendants !== false,
+    };
+  }
+  return {
+    ...base,
+    categoryIds: ids,
+    categoryIncludeDescendants: base.categoryIncludeDescendants,
+  };
+}
+
+function provenanceRelationFilter(base: MediaFilter, types: string[]): MediaFilter {
+  if (base.sourceTypes?.length) {
+    return { ...base, alsoSourceTypes: types };
+  }
+  return { ...base, sourceTypes: types };
+}
+
+/** Primary media_series_keys first; discovery fallback only if no primary. */
+function seriesKeyForFocus(
+  db: ReviewDb,
+  projectId: number,
+  focusMediaId: number,
+): string | null {
+  const primary = db
+    .prepare(
+      `SELECT series_key AS sk
+       FROM media_series_keys
+       WHERE project_id = ? AND media_id = ? AND is_primary = 1
+       ORDER BY series_key COLLATE NOCASE
+       LIMIT 1`,
+    )
+    .get(projectId, focusMediaId) as { sk: string } | undefined;
+  if (primary?.sk) return primary.sk;
+
+  const disc = db
+    .prepare(
+      `SELECT COALESCE(source_value, query_text) AS sk
+       FROM discoveries
+       WHERE project_id = ? AND media_id = ?
+         AND source_type IN ('filename-series','time-series','filename')
+         AND COALESCE(source_value, query_text) IS NOT NULL
+         AND trim(COALESCE(source_value, query_text)) <> ''
+       ORDER BY sk COLLATE NOCASE
+       LIMIT 1`,
+    )
+    .get(projectId, focusMediaId) as { sk: string } | undefined;
+  return disc?.sk ?? null;
+}
+
 export function queryFocus(db: ReviewDb, q: FocusQuery): FocusResponse {
   const base = baseFrom(q);
   const relations: FocusRelation[] = [];
@@ -111,18 +170,10 @@ export function queryFocus(db: ReviewDb, q: FocusQuery): FocusResponse {
   // similar — P1 placeholder: unavailable, no drilldown filter
   relations.push(unavailable('similar', 'Ähnlich', 'P1: Similarity noch nicht aktiv'));
 
-  // series
-  const seriesKeys = db
-    .prepare(
-      `SELECT DISTINCT COALESCE(source_value, query_text) AS sk
-       FROM discoveries
-       WHERE project_id = ? AND media_id = ?
-         AND source_type IN ('filename-series','time-series','filename')
-         AND COALESCE(source_value, query_text) IS NOT NULL`,
-    )
-    .all(q.projectId, q.focusMediaId) as Array<{ sk: string }>;
-  if (seriesKeys.length) {
-    const filter: MediaFilter = { ...base, seriesKey: seriesKeys[0].sk };
+  // series — primary keys preferred
+  const seriesKey = seriesKeyForFocus(db, q.projectId, q.focusMediaId);
+  if (seriesKey) {
+    const filter: MediaFilter = { ...base, seriesKey };
     relations.push(available('series', 'Serie', filter, computeStatusCounts(db, filter)));
   } else {
     relations.push(unavailable('series', 'Serie', 'Keine Serien-Beziehung gefunden'));
@@ -148,14 +199,15 @@ export function queryFocus(db: ReviewDb, q: FocusQuery): FocusResponse {
              SELECT COUNT(*) FROM categories c2
              WHERE c2.normalized_title = lower(d.source_value)
            ) = 1
-       )`,
+       )
+       ORDER BY category_id`,
     )
     .all(q.projectId, q.focusMediaId, q.projectId, q.projectId, q.focusMediaId) as Array<{
     category_id: number;
   }>;
   if (cats.length) {
     const ids = cats.map((c) => c.category_id);
-    const filter: MediaFilter = { ...base, categoryIds: ids };
+    const filter = categoryRelationFilter(base, ids);
     const title =
       ids.length === 1
         ? ((
@@ -213,21 +265,20 @@ export function queryFocus(db: ReviewDb, q: FocusQuery): FocusResponse {
   const types = db
     .prepare(
       `SELECT DISTINCT source_type FROM discoveries
-       WHERE project_id = ? AND media_id = ?`,
+       WHERE project_id = ? AND media_id = ?
+       ORDER BY source_type COLLATE NOCASE`,
     )
     .all(q.projectId, q.focusMediaId) as Array<{ source_type: string }>;
   if (types.length) {
-    const filter: MediaFilter = {
-      ...base,
-      sourceTypes: types.map((t) => t.source_type),
-    };
+    const typeList = types.map((t) => t.source_type);
+    const filter = provenanceRelationFilter(base, typeList);
     relations.push(
       available(
         'provenance',
         'Herkunft',
         filter,
         computeStatusCounts(db, filter),
-        types.map((t) => t.source_type).join(', '),
+        typeList.join(', '),
       ),
     );
   } else {

@@ -10,11 +10,17 @@ import { fetchFocus } from '../api/client';
 export function drilldownPatchFromGroup(
   groupBy: GroupBy,
   g: GroupCard,
+  opts?: { categoryIncludeDescendants?: boolean },
 ): Partial<MediaFilter> {
   switch (groupBy) {
     case 'category': {
       const id = Number(g.key);
-      return Number.isFinite(id) ? { categoryIds: [id] } : {};
+      return Number.isFinite(id)
+        ? {
+            categoryIds: [id],
+            categoryIncludeDescendants: opts?.categoryIncludeDescendants,
+          }
+        : {};
     }
     case 'uploader':
       return { uploader: g.key === '(ohne Uploader)' ? null : g.key };
@@ -31,18 +37,37 @@ export function drilldownPatchFromGroup(
   }
 }
 
-function relationToPatch(rel: FocusRelation): Partial<MediaFilter> {
+/** Extract only the relation delta for UI patch (not the full base filter). */
+export function relationToPatch(rel: FocusRelation): Partial<MediaFilter> {
   if (!rel.filter) return {};
   const f = rel.filter;
-  return {
-    sourceTypes: f.sourceTypes,
-    categoryIds: f.categoryIds,
-    uploader: f.uploader,
-    seriesKey: f.seriesKey,
-    seedKey: f.seedKey,
-    parentMediaId: f.parentMediaId,
-    mediaIds: f.mediaIds,
-  };
+  switch (rel.kind) {
+    case 'category':
+      if (f.alsoCategoryIds?.length) {
+        return {
+          categoryIds: f.alsoCategoryIds,
+          categoryIncludeDescendants: f.alsoCategoryIncludeDescendants,
+        };
+      }
+      return {
+        categoryIds: f.categoryIds,
+        categoryIncludeDescendants: f.categoryIncludeDescendants,
+      };
+    case 'provenance':
+      if (f.alsoSourceTypes?.length) {
+        return { sourceTypes: f.alsoSourceTypes };
+      }
+      return { sourceTypes: f.sourceTypes };
+    case 'series':
+      return f.seriesKey ? { seriesKey: f.seriesKey } : {};
+    case 'seed':
+      return f.seedKey ? { seedKey: f.seedKey } : {};
+    case 'uploader':
+      return { uploader: f.uploader };
+    case 'similar':
+    default:
+      return {};
+  }
 }
 
 export function GroupShelf({
@@ -51,12 +76,15 @@ export function GroupShelf({
   groups,
   loading,
   galleryItems,
+  mutationEpoch = 0,
 }: {
   state: ReviewUiState;
   dispatch: Dispatch<ReviewUiAction>;
   groups: GroupCard[];
   loading: boolean;
   galleryItems: MediaCard[];
+  /** Bumps after bulk/undo so focus relation counts refresh (FRV-37 prep). */
+  mutationEpoch?: number;
 }) {
   const [relations, setRelations] = useState<FocusRelation[]>([]);
   const [focusLoading, setFocusLoading] = useState(false);
@@ -88,7 +116,17 @@ export function GroupShelf({
         if (!ac.signal.aborted && id === focusReq.current) setFocusLoading(false);
       });
     return () => ac.abort();
-  }, [state.focusMediaId, state.projectId, state.statuses, state.q, state.sourceTypes, state.categoryIds, state.uploader]);
+  }, [
+    state.focusMediaId,
+    state.projectId,
+    state.statuses,
+    state.q,
+    state.sourceTypes,
+    state.categoryIds,
+    state.categoryIncludeDescendants,
+    state.uploader,
+    mutationEpoch,
+  ]);
 
   const focusItem =
     galleryItems.find((i) => i.mediaId === state.focusMediaId) ??
@@ -190,7 +228,9 @@ export function GroupShelf({
                         kind: 'group',
                         key: g.key,
                         label: g.label,
-                        patch: drilldownPatchFromGroup(state.groupBy, g),
+                        patch: drilldownPatchFromGroup(state.groupBy, g, {
+                          categoryIncludeDescendants: state.categoryIncludeDescendants,
+                        }),
                       },
                 })
               }

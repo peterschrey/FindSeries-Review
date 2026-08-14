@@ -13,6 +13,7 @@ import {
   resolveStatuses,
   seekPredicate,
   sortClause,
+  SERIES_NATURAL_SEQ_SQL,
 } from '../sql/filters.js';
 
 function emptyCounts(): StatusCounts {
@@ -181,38 +182,46 @@ export function queryGallery(db: ReviewDb, q: GalleryQuery): GalleryResponse {
       ? buildFilteredMediaCte(filter, 'count')
       : buildFilteredMediaCte(filter, 'page');
   const params = [...pageBase.params];
-  // Natural series order when drilling a series key
+  // Natural series order when drilling a series key + sort media_id
+  const seriesNatural = Boolean(filter.seriesKey) && q.sort === 'media_id';
   let order = sortClause(q.sort, q.dir);
   let seriesJoin = '';
-  if (filter.seriesKey && q.sort === 'media_id') {
+  if (seriesNatural) {
+    const d = q.dir === 'desc' ? 'DESC' : 'ASC';
     seriesJoin = `LEFT JOIN media_series_keys msk
       ON msk.project_id = ?
      AND msk.media_id = fm.media_id
      AND msk.series_key = ?
      AND msk.is_primary = 1`;
     params.push(filter.projectId, filter.seriesKey);
-    order = `COALESCE(msk.sequence_no, fm.media_id) ASC, fm.media_id ASC`;
+    order = `${SERIES_NATURAL_SEQ_SQL} ${d}, fm.media_id ${d}`;
   }
   let seekSql = '';
   if (q.cursor) {
-    const c = decodeCursor(q.cursor, { sort: q.sort, dir: q.dir });
+    const c = decodeCursor(q.cursor, {
+      sort: q.sort,
+      dir: q.dir,
+      seriesKey: seriesNatural ? filter.seriesKey : undefined,
+    });
     const pred = seekPredicate(c);
     seekSql = `WHERE ${pred.sql}`;
     params.push(...pred.params);
   }
+  const seqSelect = seriesNatural ? `, ${SERIES_NATURAL_SEQ_SQL} AS sequence_no` : '';
   const idRows = db
     .prepare(
       `WITH fm AS (${pageBase.sql})
-       SELECT fm.media_id AS media_id FROM fm
+       SELECT fm.media_id AS media_id${seqSelect} FROM fm
        ${seriesJoin}
        ${seekSql}
        ORDER BY ${order}
        LIMIT ?`,
     )
-    .all(...params, q.limit + 1) as Array<{ media_id: number }>;
+    .all(...params, q.limit + 1) as Array<{ media_id: number; sequence_no?: number }>;
 
   const hasMore = idRows.length > q.limit;
-  const pageIds = (hasMore ? idRows.slice(0, q.limit) : idRows).map((r) => r.media_id);
+  const pageRows = hasMore ? idRows.slice(0, q.limit) : idRows;
+  const pageIds = pageRows.map((r) => r.media_id);
 
   let items: MediaCard[] = [];
   if (pageIds.length) {
@@ -245,15 +254,27 @@ export function queryGallery(db: ReviewDb, q: GalleryQuery): GalleryResponse {
   let nextCursor: string | null = null;
   if (hasMore && items.length) {
     const last = items[items.length - 1];
-    nextCursor = encodeCursor({
-      mediaId: last.mediaId,
-      title: last.title,
-      uploader: last.uploader,
-      timestamp: last.timestamp,
-      score: last.score,
-      sort: q.sort,
-      dir: q.dir,
-    });
+    const lastRow = pageRows[pageRows.length - 1];
+    if (seriesNatural) {
+      nextCursor = encodeCursor({
+        mode: 'series-natural',
+        mediaId: last.mediaId,
+        sequenceNo: Number(lastRow.sequence_no),
+        seriesKey: filter.seriesKey!,
+        sort: q.sort,
+        dir: q.dir,
+      });
+    } else {
+      nextCursor = encodeCursor({
+        mediaId: last.mediaId,
+        title: last.title,
+        uploader: last.uploader,
+        timestamp: last.timestamp,
+        score: last.score,
+        sort: q.sort,
+        dir: q.dir,
+      });
+    }
   }
 
   const statusCounts = computeStatusCounts(db, filter);

@@ -293,6 +293,7 @@ export function App() {
         groups={groups}
         loading={groupsLoading}
         galleryItems={gallery.items}
+        mutationEpoch={mutationEpoch}
       />
 
       <div className="main">

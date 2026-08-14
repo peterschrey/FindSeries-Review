@@ -9,7 +9,10 @@
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
     "test": "tsx --test tests/**/*.test.ts",
-    "bench": "tsx tests/bench-real.ts"
+    "bench": "tsx tests/bench-real.ts",
+    "bench:thumbs": "tsx scripts/bench-thumbs.ts",
+    "bench:frv39": "tsx scripts/bench-frv39.ts",
+    "bench:frv40": "tsx scripts/bench-frv40.ts"
   },
   "dependencies": {
     "@findseries/review-shared": "file:../shared",

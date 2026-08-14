@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { emptyCounts, countsFromSelected } from '../state/reviewState';
+import { formatStatusLegendCount, statusPercent } from '../components/StatusOverview';
 
 /** Status-overview semantics (pure) — inventory ≠ result ≠ selection. */
 describe('status overview semantics', () => {
@@ -35,5 +36,12 @@ describe('status overview semantics', () => {
 
   it('empty counts baseline', () => {
     expect(emptyCounts().total).toBe(0);
+  });
+
+  it('FRV-36: legend percentages', () => {
+    expect(statusPercent(12, 120)).toBe(10);
+    expect(statusPercent(0, 0)).toBe(0);
+    expect(formatStatusLegendCount(12, 120)).toBe('12 · 10%');
+    expect(formatStatusLegendCount(1, 3)).toBe('1 · 33%');
   });
 });

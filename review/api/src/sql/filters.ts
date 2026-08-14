@@ -290,6 +290,17 @@ export type SeekCursor = {
   score?: number | null;
   sort: SortField;
   dir: SortDir;
+  /** Series natural order (sequence_no + media_id tie-break) */
+  mode?: 'series-natural';
+  sequenceNo?: number;
+  seriesKey?: string;
+};
+
+export type DecodeCursorExpected = {
+  sort: SortField;
+  dir: SortDir;
+  /** When set with sort=media_id, cursor must be series-natural for this key */
+  seriesKey?: string;
 };
 
 export function encodeCursor(c: SeekCursor): string {
@@ -304,7 +315,7 @@ export class CursorError extends Error {
   }
 }
 
-export function decodeCursor(raw: string, expected: { sort: SortField; dir: SortDir }): SeekCursor {
+export function decodeCursor(raw: string, expected: DecodeCursorExpected): SeekCursor {
   let parsed: unknown;
   try {
     parsed = JSON.parse(Buffer.from(raw, 'base64url').toString('utf8'));
@@ -321,11 +332,35 @@ export function decodeCursor(raw: string, expected: { sort: SortField; dir: Sort
   if (c.sort !== expected.sort || c.dir !== expected.dir) {
     throw new CursorError('Cursor sort/dir does not match current query');
   }
+  const expectSeriesNatural = Boolean(expected.seriesKey) && expected.sort === 'media_id';
+  if (expectSeriesNatural) {
+    if (c.mode !== 'series-natural') {
+      throw new CursorError('Cursor mode does not match series-natural');
+    }
+    if (c.seriesKey !== expected.seriesKey) {
+      throw new CursorError('Cursor seriesKey does not match current query');
+    }
+    if (typeof c.sequenceNo !== 'number' || !Number.isFinite(c.sequenceNo)) {
+      throw new CursorError('Malformed cursor: sequenceNo');
+    }
+  } else if (c.mode === 'series-natural') {
+    throw new CursorError('Unexpected series-natural cursor');
+  }
   return c;
 }
 
+/** Effective sequence for series natural order: COALESCE(msk.sequence_no, fm.media_id) */
+export const SERIES_NATURAL_SEQ_SQL = `COALESCE(msk.sequence_no, fm.media_id)`;
+
 export function seekPredicate(cursor: SeekCursor): BoundSql {
   const eqDir = cursor.dir === 'desc' ? '<' : '>';
+  if (cursor.mode === 'series-natural') {
+    const seq = cursor.sequenceNo!;
+    return {
+      sql: `(${SERIES_NATURAL_SEQ_SQL} ${eqDir} ? OR (${SERIES_NATURAL_SEQ_SQL} = ? AND fm.media_id ${eqDir} ?))`,
+      params: [seq, seq, cursor.mediaId],
+    };
+  }
   switch (cursor.sort) {
     case 'title': {
       const v = cursor.title ?? '';

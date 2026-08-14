@@ -1,5 +1,16 @@
 import type { StatusCounts } from '@findseries/review-shared';
 
+/** Percent of total, rounded; 0 when total is 0. */
+export function statusPercent(n: number, total: number): number {
+  if (total <= 0) return 0;
+  return Math.round((100 * n) / total);
+}
+
+/** Legend text e.g. "12 · 10%". */
+export function formatStatusLegendCount(n: number, total: number): string {
+  return `${n} · ${statusPercent(n, total)}%`;
+}
+
 function Bar({ counts }: { counts: StatusCounts }) {
   const t = Math.max(1, counts.total);
   const segs = [
@@ -39,19 +50,19 @@ function Card({
       <Bar counts={counts} />
       <div className="legend">
         <div className="legendItem">
-          <b>{counts.unreviewed}</b>
+          <b>{formatStatusLegendCount(counts.unreviewed, counts.total)}</b>
           <span>Unbewertet</span>
         </div>
         <div className="legendItem">
-          <b>{counts.unsure}</b>
+          <b>{formatStatusLegendCount(counts.unsure, counts.total)}</b>
           <span>Unsicher</span>
         </div>
         <div className="legendItem">
-          <b>{counts.keep}</b>
+          <b>{formatStatusLegendCount(counts.keep, counts.total)}</b>
           <span>Behalten</span>
         </div>
         <div className="legendItem">
-          <b>{counts.reject}</b>
+          <b>{formatStatusLegendCount(counts.reject, counts.total)}</b>
           <span>Löschen</span>
         </div>
       </div>
