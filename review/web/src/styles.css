@@ -413,13 +413,54 @@ kbd {
   gap: 8px;
   z-index: 50;
 }
-.toast {
-  background: #1a2738;
-  border: 1px solid #4a6484;
-  border-radius: 8px;
-  padding: 10px 14px;
-  font-size: 12px;
-  max-width: 360px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+.provChips {
+  position: absolute;
+  left: 4px;
+  bottom: 22px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  max-width: 90%;
 }
+.provChip {
+  font-size: 8px;
+  line-height: 1.2;
+  padding: 1px 3px;
+  border-radius: 3px;
+  background: #243246;
+  color: #c5d4e6;
+  max-width: 54px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.provChip.fam-category { background: #1e3a4c; }
+.provChip.fam-keyword { background: #3a2e1e; }
+.provChip.fam-neighbor { background: #2a1e3a; }
+.provChip.fam-series { background: #1e3a2e; }
+.focusCard { position: relative; border-color: var(--accent); }
+.focusX {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid #5a718c;
+  background: #0f1721;
+  color: #e8eef6;
+  cursor: pointer;
+  z-index: 2;
+}
+.relationCard.disabled { opacity: 0.55; cursor: not-allowed; }
+.catRow { display: flex; align-items: center; gap: 2px; }
+.catExp {
+  width: 18px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.catExp.spacer { display: inline-block; width: 18px; }
+
 

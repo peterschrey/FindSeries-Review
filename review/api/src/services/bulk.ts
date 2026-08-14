@@ -182,8 +182,9 @@ export function applyBulk(db: ReviewDb, req: BulkRequest): BulkResponse {
 }
 
 /**
- * Undo only if no later history row exists for the same project/media
- * after this batch's history entry (covers sparse reset where current row is gone).
+ * Undo only if no later *active* history exists for the same project/media.
+ * History belonging to already-undone batches (or undo audit rows) must not
+ * permanently block earlier undos (A→B→UndoB→UndoA).
  */
 export function undoBatch(db: ReviewDb, req: UndoRequest): UndoResponse {
   let batchId = req.batchId;
@@ -228,9 +229,18 @@ export function undoBatch(db: ReviewDb, req: UndoRequest): UndoResponse {
     new_status: ReviewStatus;
   }>;
 
-  const laterExists = db.prepare(
-    `SELECT 1 AS x FROM media_review_history
-     WHERE project_id = ? AND media_id = ? AND id > ?
+  // Active later change = history row with higher id belonging to a still-active batch.
+  // Undo-audit rows (no batch / action=undo) and history of undone batches do not block.
+  const laterActiveExists = db.prepare(
+    `SELECT 1 AS x
+     FROM media_review_history h
+     INNER JOIN media_review_batches b ON b.batch_id = h.batch_id
+     WHERE h.project_id = ?
+       AND h.media_id = ?
+       AND h.id > ?
+       AND b.undone_at IS NULL
+       AND COALESCE(h.action, '') <> 'undo'
+       AND COALESCE(b.action, '') <> 'undo'
      LIMIT 1`,
   );
   const selectCurrent = db.prepare(
@@ -266,7 +276,7 @@ export function undoBatch(db: ReviewDb, req: UndoRequest): UndoResponse {
 
   const tx = db.transaction(() => {
     for (const h of hist) {
-      const later = laterExists.get(req.projectId, h.media_id, h.id);
+      const later = laterActiveExists.get(req.projectId, h.media_id, h.id);
       if (later) {
         skippedProtected += 1;
         continue;

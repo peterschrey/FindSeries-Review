@@ -146,7 +146,37 @@ describe('reviewUiState FRV-18/22/D', () => {
     expect(s.selectionAnchorId).toBe(3);
   });
 
-  it('filter change clears selection; groupBy does not', () => {
+  it('groupBy keeps selection without drilldown; clears with drilldown', () => {
+    let s = createInitialState(7);
+    s = reviewUiReducer(s, {
+      type: 'select_click',
+      mediaId: 1,
+      orderedIds: [1, 2],
+    });
+    s = reviewUiReducer(s, { type: 'set_group_by', groupBy: 'uploader' });
+    expect(s.selectedIds).toEqual([1]);
+    s = reviewUiReducer(s, {
+      type: 'set_drilldown',
+      drilldown: {
+        kind: 'uploader',
+        key: 'A',
+        label: 'A',
+        patch: { uploader: 'A' },
+      },
+    });
+    // drilldown clears selection
+    expect(s.selectedIds).toEqual([]);
+    s = reviewUiReducer(s, {
+      type: 'select_click',
+      mediaId: 2,
+      orderedIds: [1, 2],
+    });
+    s = reviewUiReducer(s, { type: 'set_group_by', groupBy: 'category' });
+    expect(s.drilldown).toBeNull();
+    expect(s.selectedIds).toEqual([]);
+  });
+
+  it('filter change clears selection; plain groupBy does not', () => {
     let s = createInitialState(7);
     s = reviewUiReducer(s, {
       type: 'select_click',

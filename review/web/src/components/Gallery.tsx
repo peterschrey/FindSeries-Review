@@ -13,10 +13,14 @@ export function Gallery({
   state,
   dispatch,
   gallery,
+  scrollToMediaId = null,
+  onScrolled,
 }: {
   state: ReviewUiState;
   dispatch: Dispatch<ReviewUiAction>;
   gallery: GalleryModel;
+  scrollToMediaId?: number | null;
+  onScrolled?: () => void;
 }) {
   const parentRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(800);
@@ -55,6 +59,15 @@ export function Gallery({
     estimateSize: () => CELL + GAP,
     overscan: 6,
   });
+
+  useEffect(() => {
+    if (scrollToMediaId == null) return;
+    const idx = gallery.items.findIndex((i) => i.mediaId === scrollToMediaId);
+    if (idx < 0) return;
+    const row = Math.floor(idx / cols);
+    virtualizer.scrollToIndex(row, { align: 'center' });
+    onScrolled?.();
+  }, [scrollToMediaId, gallery.items, cols, virtualizer, onScrolled]);
 
   useEffect(() => {
     const el = parentRef.current;
@@ -173,6 +186,15 @@ export function Gallery({
                     >
                       <ThumbImage mediaId={item.mediaId} alt={item.title ?? ''} />
                       <span className="statusbadge">{item.reviewStatus}</span>
+                      {item.provenance && item.provenance.length > 0 && (
+                        <div className="provChips">
+                          {item.provenance.slice(0, 3).map((p) => (
+                            <span key={p.sourceType} className={`provChip fam-${p.family}`} title={p.sourceType}>
+                              {p.chipLabel}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                       {focused && <span className="focusMarker">FOKUS</span>}
                       <div className="thumbfoot">{item.title ?? `#${item.mediaId}`}</div>
                     </button>

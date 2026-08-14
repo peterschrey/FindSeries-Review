@@ -22,6 +22,8 @@ import {
 import { fetchProjects, postBulk, postUndo } from '../api/client';
 
 type Toast = { id: number; text: string };
+type UndoEntry = { projectId: number; batchId: string };
+type AdvancePlan = { preferIndex: number; minGeneration: number };
 
 function isTypingTarget(el: EventTarget | null): boolean {
   if (!(el instanceof HTMLElement)) return false;
@@ -34,22 +36,28 @@ function isTypingTarget(el: EventTarget | null): boolean {
 export function App() {
   const sessionId = useMemo(() => getOrCreateSessionId(), []);
   const [state, dispatch] = useReducer(reviewUiReducer, undefined, () => loadPersistedState(7));
-  const [reloadToken, setReloadToken] = useState(0);
-  const gallery = useGalleryData(state, reloadToken);
-  const inventory = useInventoryCounts(state.projectId);
-  const { groups, loading: groupsLoading } = useGroupsData(state);
-  const { facets } = useFacetsData(state);
+  const [mutationEpoch, setMutationEpoch] = useState(0);
+  const gallery = useGalleryData(state, mutationEpoch);
+  const inventory = useInventoryCounts(state.projectId, mutationEpoch);
+  const { groups, loading: groupsLoading } = useGroupsData(state, mutationEpoch);
+  const { facets } = useFacetsData(state, mutationEpoch);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [busy, setBusy] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [lastBulk, setLastBulk] = useState<BulkResponse | null>(null);
   const [undoLen, setUndoLen] = useState(0);
-  const undoStackRef = useRef<string[]>([]);
+  const [scrollToMediaId, setScrollToMediaId] = useState<number | null>(null);
+  const undoStackRef = useRef<UndoEntry[]>([]);
   const toastIdRef = useRef(0);
   const galleryRef = useRef(gallery);
   galleryRef.current = gallery;
   const stateRef = useRef(state);
   stateRef.current = state;
+  const advanceRef = useRef<AdvancePlan | null>(null);
+  const busyRef = useRef(false);
+  busyRef.current = busy;
+
+  const bumpMutation = useCallback(() => setMutationEpoch((n) => n + 1), []);
 
   useEffect(() => {
     const ac = new AbortController();
@@ -67,24 +75,49 @@ export function App() {
     persistState(state);
   }, [state]);
 
+  // Project change: drop undo entries from other projects
+  useEffect(() => {
+    undoStackRef.current = undoStackRef.current.filter((e) => e.projectId === state.projectId);
+    setUndoLen(undoStackRef.current.length);
+  }, [state.projectId]);
+
   const pushToast = useCallback((text: string) => {
     const id = ++toastIdRef.current;
     setToasts((t) => [...t.slice(-4), { id, text }]);
     window.setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 6000);
   }, []);
 
-  const refreshGallery = useCallback(() => setReloadToken((n) => n + 1), []);
-
   const selectionCounts = useMemo(
     () => countsFromSelected(state.selectedIds, gallery.items),
     [state.selectedIds, gallery.items],
   );
 
+  // Auto-advance tied to gallery loadGeneration (no fixed timer)
+  useEffect(() => {
+    const plan = advanceRef.current;
+    if (!plan) return;
+    if (gallery.loading) return;
+    if (gallery.loadGeneration < plan.minGeneration) return;
+    advanceRef.current = null;
+    const items = gallery.items;
+    if (!items.length) return;
+    const idx = Math.min(Math.max(0, plan.preferIndex), items.length - 1);
+    const next = items[idx];
+    if (!next) return;
+    dispatch({
+      type: 'select_click',
+      mediaId: next.mediaId,
+      orderedIds: items.map((i) => i.mediaId),
+    });
+    setScrollToMediaId(next.mediaId);
+  }, [gallery.loading, gallery.loadGeneration, gallery.items]);
+
   const applyStatus = useCallback(
     async (target: ReviewStatus | 'reset') => {
       const s = stateRef.current;
-      if (!s.selectedIds.length || busy) return;
+      if (!s.selectedIds.length || busyRef.current) return;
       setBusy(true);
+      busyRef.current = true;
       try {
         const res = await postBulk(
           target === 'reset'
@@ -107,64 +140,68 @@ export function App() {
               },
         );
         setLastBulk(res);
-        undoStackRef.current.push(res.batchId);
+        undoStackRef.current.push({ projectId: s.projectId, batchId: res.batchId });
         setUndoLen(undoStackRef.current.length);
         pushToast(
           `Ziel ${res.mediaCount} · geändert ${res.changedCount} · Keep geschützt ${res.protectedCount} · übersprungen ${res.skippedCount}`,
         );
 
-        // Auto-advance: remember first selected index before clear
         const ordered = galleryRef.current.items.map((i) => i.mediaId);
         const idxs = s.selectedIds
           .map((id) => ordered.indexOf(id))
           .filter((i) => i >= 0)
           .sort((a, b) => a - b);
-        const anchorIdx = idxs[0] ?? -1;
+        const preferIndex = idxs.length ? idxs[idxs.length - 1]! + 1 - idxs.length : 0;
+        // After reject/keep disappear, prefer the index of the first selected (items shift up)
+        advanceRef.current = {
+          preferIndex: Math.max(0, idxs[0] ?? 0),
+          minGeneration: galleryRef.current.loadGeneration + 1,
+        };
+        void preferIndex;
 
         dispatch({ type: 'clear_selection' });
-        refreshGallery();
-
-        // After reload, select next remaining item near previous position (best-effort)
-        window.setTimeout(() => {
-          const items = galleryRef.current.items;
-          if (!items.length || anchorIdx < 0) return;
-          const next = items[Math.min(anchorIdx, items.length - 1)];
-          if (next) {
-            dispatch({
-              type: 'select_click',
-              mediaId: next.mediaId,
-              orderedIds: items.map((i) => i.mediaId),
-            });
-          }
-        }, 350);
+        bumpMutation();
       } catch (e) {
         pushToast(e instanceof Error ? e.message : String(e));
       } finally {
         setBusy(false);
+        busyRef.current = false;
       }
     },
-    [busy, pushToast, refreshGallery, sessionId],
+    [bumpMutation, pushToast, sessionId],
   );
 
   const undoLast = useCallback(async () => {
-    const batchId = undoStackRef.current.pop();
+    if (busyRef.current) return;
+    const entry = undoStackRef.current[undoStackRef.current.length - 1];
+    if (!entry) return;
+    if (entry.projectId !== stateRef.current.projectId) {
+      pushToast('Undo gehört zu einem anderen Projekt');
+      return;
+    }
+    // pop only after busy gate
+    undoStackRef.current.pop();
     setUndoLen(undoStackRef.current.length);
-    if (!batchId || busy) return;
     setBusy(true);
+    busyRef.current = true;
     try {
       const res = await postUndo({
-        projectId: stateRef.current.projectId,
-        batchId,
+        projectId: entry.projectId,
+        batchId: entry.batchId,
         sessionId,
       });
       pushToast(`Undo · ${res.restoredCount} restored`);
-      refreshGallery();
+      bumpMutation();
     } catch (e) {
+      // restore stack on failure
+      undoStackRef.current.push(entry);
+      setUndoLen(undoStackRef.current.length);
       pushToast(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
+      busyRef.current = false;
     }
-  }, [busy, pushToast, refreshGallery, sessionId]);
+  }, [bumpMutation, pushToast, sessionId]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -173,6 +210,12 @@ export function App() {
       if (k === 'z' && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
         void undoLast();
+        return;
+      }
+      if (k === 'escape') {
+        if (stateRef.current.focusMediaId != null) {
+          dispatch({ type: 'set_focus', mediaId: null });
+        }
         return;
       }
       if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -194,15 +237,14 @@ export function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, [applyStatus, undoLast]);
 
-  const wrappedDispatch = useCallback(
-    (a: ReviewUiAction) => {
-      if (a.type === 'reset_filters') {
-        clearPersistedState();
-      }
-      dispatch(a);
-    },
-    [],
-  );
+  const wrappedDispatch = useCallback((a: ReviewUiAction) => {
+    if (a.type === 'reset_filters') clearPersistedState();
+    if (a.type === 'set_project') {
+      undoStackRef.current = [];
+      setUndoLen(0);
+    }
+    dispatch(a);
+  }, []);
 
   return (
     <div className="app">
@@ -222,7 +264,12 @@ export function App() {
             Auswahl {state.selectedIds.length}
             {state.focusMediaId != null ? ` · Fokus #${state.focusMediaId}` : ''}
           </span>
-          <button type="button" className="btn" disabled={busy || undoLen === 0} onClick={() => void undoLast()}>
+          <button
+            type="button"
+            className="btn"
+            disabled={busy || undoLen === 0}
+            onClick={() => void undoLast()}
+          >
             Undo
           </button>
         </div>
@@ -240,11 +287,23 @@ export function App() {
         </div>
       )}
 
-      <GroupShelf state={state} dispatch={wrappedDispatch} groups={groups} loading={groupsLoading} />
+      <GroupShelf
+        state={state}
+        dispatch={wrappedDispatch}
+        groups={groups}
+        loading={groupsLoading}
+        galleryItems={gallery.items}
+      />
 
       <div className="main">
         <LeftNav state={state} dispatch={wrappedDispatch} facets={facets} />
-        <Gallery state={state} dispatch={wrappedDispatch} gallery={gallery} />
+        <Gallery
+          state={state}
+          dispatch={wrappedDispatch}
+          gallery={gallery}
+          scrollToMediaId={scrollToMediaId}
+          onScrolled={() => setScrollToMediaId(null)}
+        />
         <ContextPanel
           state={state}
           dispatch={wrappedDispatch}
@@ -258,7 +317,8 @@ export function App() {
       <footer>
         <span>
           <kbd>Click</kbd> Auswahl · <kbd>Ctrl</kbd> Toggle · <kbd>Shift</kbd> Range ·{' '}
-          <kbd>Doppelklick</kbd> Fokus · <kbd>K/R/U/N</kbd> Status · <kbd>Ctrl+Z</kbd> Undo
+          <kbd>Doppelklick</kbd> Fokus · <kbd>K/R/U/N</kbd> Status · <kbd>Ctrl+Z</kbd> Undo ·{' '}
+          <kbd>Esc</kbd> Fokus weg
         </span>
       </footer>
 

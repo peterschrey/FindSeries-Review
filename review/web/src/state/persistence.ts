@@ -51,16 +51,16 @@ export function loadPersistedState(fallbackProjectId: number): ReviewUiState {
       q: typeof parsed.q === 'string' ? parsed.q : '',
       sourceTypes: parsed.sourceTypes,
       categoryIds: parsed.categoryIds,
+      categoryIncludeDescendants: true,
       uploader: parsed.uploader,
       groupBy: parsed.groupBy ?? base.groupBy,
       sort: parsed.sort ?? base.sort,
       dir: parsed.dir ?? base.dir,
-      // focus intentionally not restored
       focusMediaId: null,
       selectedIds: [],
       selectionAnchorId: null,
       drilldown: null,
-      filterEpoch: 0,
+      focusRelation: null,
     };
   } catch {
     return base;

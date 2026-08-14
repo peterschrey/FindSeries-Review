@@ -20,6 +20,7 @@ export const GroupBySchema = z.enum([
   'category',
   'series',
   'uploader',
+  'seed',
 ]);
 export type GroupBy = z.infer<typeof GroupBySchema>;
 
@@ -33,15 +34,15 @@ export type GroupBy = z.infer<typeof GroupBySchema>;
  * - uploader undefined → no uploader filter
  * - uploader null → current_uploader IS NULL OR ''
  * - uploader string → exact match
- *
- * seriesStrategy removed from P0 (deferred to FRV-30).
+ * - categoryIncludeDescendants defaults to true (subtree); false = exact category only
+ * - multiple sourceTypes within one facet = OR; alsoSourceTypes = AND with another layer
  */
 export const MediaFilterSchema = z.object({
   projectId: z.number().int().positive(),
   statuses: z.array(ReviewStatusSchema).optional(),
   q: z.string().optional(),
   sourceTypes: z.array(z.string()).optional(),
-  /** Category roots; subtree + fallback semantics from CATEGORY_GRAPH.md */
+  /** Category roots; subtree when categoryIncludeDescendants !== false */
   categoryIds: z.array(z.number().int().positive()).optional(),
   /**
    * Extra category roots that must ALSO match (AND with categoryIds).
@@ -50,6 +51,12 @@ export const MediaFilterSchema = z.object({
   alsoCategoryIds: z.array(z.number().int().positive()).optional(),
   /** Extra sourceTypes that must ALSO match (AND with sourceTypes). */
   alsoSourceTypes: z.array(z.string()).optional(),
+  /**
+   * When false with categoryIds: only exact category membership (no subtree).
+   * Default / omitted: include descendants (subtree).
+   */
+  categoryIncludeDescendants: z.boolean().optional(),
+  alsoCategoryIncludeDescendants: z.boolean().optional(),
   /** undefined = no filter; null = empty/null uploader; string = exact */
   uploader: z.string().nullable().optional(),
   seriesKey: z.string().optional(),
@@ -89,8 +96,25 @@ export const MediaCardSchema = z.object({
   reviewStatus: ReviewStatusSchema,
   localPath: z.string().nullable().optional(),
   thumbKey: z.string().optional(),
+  /** Bundled provenance chips for the gallery page (no N+1). */
+  provenance: z
+    .array(
+      z.object({
+        sourceType: z.string(),
+        family: z.string(),
+        chipLabel: z.string(),
+      }),
+    )
+    .optional(),
 });
 export type MediaCard = z.infer<typeof MediaCardSchema>;
+
+export const ProvenanceChipSchema = z.object({
+  sourceType: z.string(),
+  family: z.string(),
+  chipLabel: z.string(),
+});
+export type ProvenanceChip = z.infer<typeof ProvenanceChipSchema>;
 
 export const GalleryQuerySchema = MediaFilterSchema.extend({
   limit: z.number().int().min(1).max(500).default(100),

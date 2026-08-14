@@ -3,11 +3,43 @@ import type { MediaFilter, ReviewStatus, SortDir, SortField } from '@findseries/
 export type BoundSql = { sql: string; params: unknown[] };
 
 /** Category membership with origin_category_id + validated source_value fallback. */
-export function categoryMediaSql(projectId: number, categoryIds: number[]): BoundSql {
+export function categoryMediaSql(
+  projectId: number,
+  categoryIds: number[],
+  opts?: { includeDescendants?: boolean },
+): BoundSql {
   if (!categoryIds.length) {
     return { sql: 'SELECT CAST(NULL AS INTEGER) AS media_id WHERE 0', params: [] };
   }
   const placeholders = categoryIds.map(() => '?').join(',');
+  const includeDescendants = opts?.includeDescendants !== false;
+
+  if (!includeDescendants) {
+    // Exact category only — no subtree expansion.
+    return {
+      sql: `
+SELECT DISTINCT d.media_id AS media_id
+FROM discoveries d
+WHERE d.project_id = ? AND d.source_type = 'category'
+  AND d.origin_category_id IN (${placeholders})
+UNION
+SELECT DISTINCT d.media_id AS media_id
+FROM discoveries d
+JOIN categories c ON c.normalized_title = lower(d.source_value)
+JOIN project_categories pc ON pc.project_id = ? AND pc.category_id = c.id
+WHERE d.project_id = ?
+  AND d.source_type = 'category'
+  AND d.origin_category_id IS NULL
+  AND c.id IN (${placeholders})
+  AND d.source_value IS NOT NULL AND trim(d.source_value) <> ''
+  AND (
+    SELECT COUNT(*) FROM categories c2
+    WHERE c2.normalized_title = lower(d.source_value)
+  ) = 1`,
+      params: [projectId, ...categoryIds, projectId, projectId, ...categoryIds],
+    };
+  }
+
   return {
     sql: `
 WITH RECURSIVE sub AS (
@@ -138,25 +170,36 @@ function buildWhere(filter: MediaFilter): { where: string[]; params: unknown[]; 
     params.push(filter.seedKey, filter.seedKey);
   }
   if (filter.seriesKey) {
-    where.push(`EXISTS (
-      SELECT 1 FROM discoveries dser
-      WHERE dser.project_id = pm.project_id AND dser.media_id = pm.media_id
-        AND dser.source_type IN ('filename-series','time-series','filename')
-        AND COALESCE(dser.source_value, dser.query_text) = ?
+    where.push(`(
+      EXISTS (
+        SELECT 1 FROM media_series_keys msk
+        WHERE msk.project_id = pm.project_id AND msk.media_id = pm.media_id
+          AND msk.is_primary = 1 AND msk.series_key = ?
+      )
+      OR EXISTS (
+        SELECT 1 FROM discoveries dser
+        WHERE dser.project_id = pm.project_id AND dser.media_id = pm.media_id
+          AND dser.source_type IN ('filename-series','time-series','filename')
+          AND COALESCE(dser.source_value, dser.query_text) = ?
+      )
     )`);
-    params.push(filter.seriesKey);
+    params.push(filter.seriesKey, filter.seriesKey);
   }
 
   let joinExtra = '';
   const catJoins: string[] = [];
   const catParams: unknown[] = [];
   if (filter.categoryIds?.length) {
-    const cat = categoryMediaSql(filter.projectId, filter.categoryIds);
+    const cat = categoryMediaSql(filter.projectId, filter.categoryIds, {
+      includeDescendants: filter.categoryIncludeDescendants !== false,
+    });
     catParams.push(...cat.params);
     catJoins.push(`JOIN (${cat.sql}) catf ON catf.media_id = pm.media_id`);
   }
   if (filter.alsoCategoryIds?.length) {
-    const cat2 = categoryMediaSql(filter.projectId, filter.alsoCategoryIds);
+    const cat2 = categoryMediaSql(filter.projectId, filter.alsoCategoryIds, {
+      includeDescendants: filter.alsoCategoryIncludeDescendants !== false,
+    });
     catParams.push(...cat2.params);
     catJoins.push(`JOIN (${cat2.sql}) catf2 ON catf2.media_id = pm.media_id`);
   }

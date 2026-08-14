@@ -5,7 +5,6 @@ import { ThumbImage } from './ThumbImage';
 
 export function ContextPanel({
   state,
-  dispatch,
   items,
   busy,
   onStatus,
@@ -38,14 +37,8 @@ export function ContextPanel({
         <h3>Kontext</h3>
         <div className="helper">{mode}</div>
         {state.focusMediaId != null && (
-          <div style={{ marginTop: 8 }}>
-            <button
-              type="button"
-              className="btn"
-              onClick={() => dispatch({ type: 'set_focus', mediaId: null })}
-            >
-              Fokus aufheben
-            </button>
+          <div className="helper" style={{ marginTop: 8 }}>
+            Fokus #{state.focusMediaId} — aufheben über × in der Fokuskarte (Shelf) oder Esc.
           </div>
         )}
       </div>

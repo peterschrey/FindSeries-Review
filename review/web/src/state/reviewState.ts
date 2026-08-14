@@ -11,7 +11,7 @@ import type {
 export const DEFAULT_STATUSES: ReviewStatus[] = ['unreviewed', 'unsure'];
 
 export type ActiveDrilldown = {
-  kind: 'group' | 'category' | 'uploader' | 'sourceType' | 'series';
+  kind: 'group' | 'category' | 'uploader' | 'sourceType' | 'series' | 'seed' | 'focus-relation';
   key: string;
   label: string;
   /** Only the drill constraint — never replaces global filters wholesale. */
@@ -29,11 +29,15 @@ export type ReviewUiState = {
   q: string;
   sourceTypes: string[] | undefined;
   categoryIds: number[] | undefined;
+  /** true/undefined = subtree; false = exact only */
+  categoryIncludeDescendants: boolean;
   uploader: string | null | undefined;
   groupBy: GroupBy;
   sort: SortField;
   dir: SortDir;
   drilldown: ActiveDrilldown;
+  /** Focus-relation drilldown (FRV-32) — cleared by Focus-X, separate from group drilldown */
+  focusRelation: ActiveDrilldown;
   /** Focus media id — separate from selection */
   focusMediaId: number | null;
   /** Selection set (click), never auto-set by focus */
@@ -50,8 +54,11 @@ export type ReviewUiAction =
   | { type: 'toggle_status'; status: ReviewStatus }
   | { type: 'set_q'; q: string }
   | { type: 'set_source_types'; sourceTypes: string[] | undefined }
-  | { type: 'set_category_ids'; categoryIds: number[] | undefined }
+  | { type: 'set_category_ids'; categoryIds: number[] | undefined; includeDescendants?: boolean }
+  | { type: 'toggle_category_include_descendants' }
   | { type: 'set_uploader'; uploader: string | null | undefined }
+  | { type: 'set_focus_relation'; relation: ActiveDrilldown }
+  | { type: 'clear_focus_relation' }
   | { type: 'set_group_by'; groupBy: GroupBy }
   | { type: 'set_sort'; sort: SortField; dir?: SortDir }
   | { type: 'set_drilldown'; drilldown: ActiveDrilldown }
@@ -77,11 +84,13 @@ export function createInitialState(projectId = 7): ReviewUiState {
     q: '',
     sourceTypes: undefined,
     categoryIds: undefined,
+    categoryIncludeDescendants: true,
     uploader: undefined,
     groupBy: 'provenance',
     sort: 'media_id',
     dir: 'asc',
     drilldown: null,
+    focusRelation: null,
     focusMediaId: null,
     selectedIds: [],
     selectionAnchorId: null,
@@ -101,11 +110,15 @@ export function resultIdentity(state: ReviewUiState): string {
     q: state.q,
     sourceTypes: state.sourceTypes,
     categoryIds: state.categoryIds,
+    categoryIncludeDescendants: state.categoryIncludeDescendants,
     uploader: state.uploader,
     sort: state.sort,
     dir: state.dir,
     drilldown: state.drilldown
       ? { kind: state.drilldown.kind, key: state.drilldown.key, patch: state.drilldown.patch }
+      : null,
+    focusRelation: state.focusRelation
+      ? { key: state.focusRelation.key, patch: state.focusRelation.patch }
       : null,
   });
 }
@@ -128,12 +141,38 @@ export function reviewUiReducer(state: ReviewUiState, action: ReviewUiAction): R
     case 'set_source_types':
       return { ...state, sourceTypes: action.sourceTypes, ...clearSelection() };
     case 'set_category_ids':
-      return { ...state, categoryIds: action.categoryIds, ...clearSelection() };
+      return {
+        ...state,
+        categoryIds: action.categoryIds,
+        categoryIncludeDescendants:
+          action.includeDescendants ?? state.categoryIncludeDescendants,
+        ...clearSelection(),
+      };
+    case 'toggle_category_include_descendants':
+      return {
+        ...state,
+        categoryIncludeDescendants: !state.categoryIncludeDescendants,
+        ...clearSelection(),
+      };
     case 'set_uploader':
       return { ...state, uploader: action.uploader, ...clearSelection() };
-    case 'set_group_by':
-      // groupBy does not change gallery result — keep selection
-      return { ...state, groupBy: action.groupBy, drilldown: null };
+    case 'set_focus_relation':
+      return { ...state, focusRelation: action.relation, ...clearSelection() };
+    case 'clear_focus_relation':
+      return { ...state, focusRelation: null, ...clearSelection() };
+    case 'set_group_by': {
+      // Without drilldown: gallery result unchanged → keep selection.
+      // With drilldown: clearing drilldown changes result → clear selection.
+      if (state.drilldown || state.focusRelation) {
+        return {
+          ...state,
+          groupBy: action.groupBy,
+          drilldown: null,
+          ...clearSelection(),
+        };
+      }
+      return { ...state, groupBy: action.groupBy };
+    }
     case 'set_sort':
       return {
         ...state,
@@ -228,7 +267,11 @@ export function reviewUiReducer(state: ReviewUiState, action: ReviewUiAction): R
     case 'clear_selection':
       return { ...state, selectedIds: [], selectionAnchorId: null };
     case 'set_focus':
-      return { ...state, focusMediaId: action.mediaId };
+      return {
+        ...state,
+        focusMediaId: action.mediaId,
+        focusRelation: null,
+      };
     default:
       return state;
   }
@@ -240,51 +283,55 @@ export function reviewUiReducer(state: ReviewUiState, action: ReviewUiAction): R
  */
 export function toMediaFilter(state: ReviewUiState): MediaFilter {
   const d = state.drilldown?.patch ?? {};
+  const fr = state.focusRelation?.patch ?? {};
   const filter: MediaFilter = {
     projectId: state.projectId,
     statuses: state.statuses,
     q: state.q.trim() || undefined,
     sourceTypes: state.sourceTypes,
     categoryIds: state.categoryIds,
+    categoryIncludeDescendants: state.categoryIncludeDescendants,
     uploader: state.uploader,
   };
 
-  // Category AND
-  if (d.categoryIds?.length) {
-    if (filter.categoryIds?.length) {
-      filter.alsoCategoryIds = d.categoryIds;
-    } else {
-      filter.categoryIds = d.categoryIds;
-    }
-  }
-
-  // SourceType AND
-  if (d.sourceTypes?.length) {
-    if (filter.sourceTypes?.length) {
-      filter.alsoSourceTypes = d.sourceTypes;
-    } else {
-      filter.sourceTypes = d.sourceTypes;
-    }
-  }
-
-  // Uploader AND (conflicting equality → empty)
-  if (d.uploader !== undefined) {
-    if (filter.uploader !== undefined) {
-      if (filter.uploader !== d.uploader) {
-        filter.mediaIds = [];
+  const applyPatch = (patch: Partial<MediaFilter>) => {
+    if (patch.categoryIds?.length) {
+      if (filter.categoryIds?.length) {
+        filter.alsoCategoryIds = patch.categoryIds;
+        if (patch.categoryIncludeDescendants !== undefined) {
+          filter.alsoCategoryIncludeDescendants = patch.categoryIncludeDescendants;
+        }
+      } else {
+        filter.categoryIds = patch.categoryIds;
+        if (patch.categoryIncludeDescendants !== undefined) {
+          filter.categoryIncludeDescendants = patch.categoryIncludeDescendants;
+        }
       }
-    } else {
-      filter.uploader = d.uploader;
     }
-  }
+    if (patch.sourceTypes?.length) {
+      if (filter.sourceTypes?.length) {
+        filter.alsoSourceTypes = patch.sourceTypes;
+      } else {
+        filter.sourceTypes = patch.sourceTypes;
+      }
+    }
+    if (patch.uploader !== undefined) {
+      if (filter.uploader !== undefined) {
+        if (filter.uploader !== patch.uploader) filter.mediaIds = [];
+      } else {
+        filter.uploader = patch.uploader;
+      }
+    }
+    if (patch.seriesKey) filter.seriesKey = patch.seriesKey;
+    if (patch.seedKey) filter.seedKey = patch.seedKey;
+    if (patch.parentMediaId) filter.parentMediaId = patch.parentMediaId;
+    if (patch.mediaIds) {
+      filter.mediaIds = filter.mediaIds?.length === 0 ? [] : patch.mediaIds;
+    }
+  };
 
-  if (d.seriesKey) filter.seriesKey = d.seriesKey;
-  if (d.seedKey) filter.seedKey = d.seedKey;
-  if (d.parentMediaId) filter.parentMediaId = d.parentMediaId;
-  if (d.mediaIds) {
-    filter.mediaIds = filter.mediaIds?.length === 0 ? [] : d.mediaIds;
-  }
-
+  applyPatch(d);
+  applyPatch(fr);
   return filter;
 }
 
@@ -296,6 +343,7 @@ export function toGlobalMediaFilter(state: ReviewUiState): MediaFilter {
     q: state.q.trim() || undefined,
     sourceTypes: state.sourceTypes,
     categoryIds: state.categoryIds,
+    categoryIncludeDescendants: state.categoryIncludeDescendants,
     uploader: state.uploader,
   };
 }

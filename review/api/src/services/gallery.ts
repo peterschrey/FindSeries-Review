@@ -112,6 +112,48 @@ function mapCard(r: Record<string, unknown>): MediaCard {
   };
 }
 
+function attachProvenance(
+  db: ReviewDb,
+  projectId: number,
+  items: MediaCard[],
+): MediaCard[] {
+  if (!items.length) return items;
+  const ids = items.map((i) => i.mediaId);
+  const placeholders = ids.map(() => '?').join(',');
+  const rows = db
+    .prepare(
+      `SELECT d.media_id AS media_id, d.source_type AS source_type,
+              COALESCE(rpm.family, 'unknown') AS family,
+              COALESCE(rpm.chip_label, d.source_type) AS chip_label
+       FROM discoveries d
+       LEFT JOIN review_provenance_type_map rpm ON rpm.source_type = d.source_type
+       WHERE d.project_id = ? AND d.media_id IN (${placeholders})
+       ORDER BY d.media_id, d.source_type`,
+    )
+    .all(projectId, ...ids) as Array<{
+    media_id: number;
+    source_type: string;
+    family: string;
+    chip_label: string;
+  }>;
+  const byMedia = new Map<number, MediaCard['provenance']>();
+  for (const r of rows) {
+    const list = byMedia.get(r.media_id) ?? [];
+    if (!list.some((p) => p.sourceType === r.source_type)) {
+      list.push({
+        sourceType: r.source_type,
+        family: r.family,
+        chipLabel: r.chip_label,
+      });
+    }
+    byMedia.set(r.media_id, list);
+  }
+  return items.map((it) => ({
+    ...it,
+    provenance: byMedia.get(it.mediaId) ?? [],
+  }));
+}
+
 export function queryGallery(db: ReviewDb, q: GalleryQuery): GalleryResponse {
   const filter: MediaFilter = {
     projectId: q.projectId,
@@ -121,6 +163,8 @@ export function queryGallery(db: ReviewDb, q: GalleryQuery): GalleryResponse {
     categoryIds: q.categoryIds,
     alsoCategoryIds: q.alsoCategoryIds,
     alsoSourceTypes: q.alsoSourceTypes,
+    categoryIncludeDescendants: q.categoryIncludeDescendants,
+    alsoCategoryIncludeDescendants: q.alsoCategoryIncludeDescendants,
     uploader: q.uploader,
     seriesKey: q.seriesKey,
     seedKey: q.seedKey,
@@ -137,6 +181,18 @@ export function queryGallery(db: ReviewDb, q: GalleryQuery): GalleryResponse {
       ? buildFilteredMediaCte(filter, 'count')
       : buildFilteredMediaCte(filter, 'page');
   const params = [...pageBase.params];
+  // Natural series order when drilling a series key
+  let order = sortClause(q.sort, q.dir);
+  let seriesJoin = '';
+  if (filter.seriesKey && q.sort === 'media_id') {
+    seriesJoin = `LEFT JOIN media_series_keys msk
+      ON msk.project_id = ?
+     AND msk.media_id = fm.media_id
+     AND msk.series_key = ?
+     AND msk.is_primary = 1`;
+    params.push(filter.projectId, filter.seriesKey);
+    order = `COALESCE(msk.sequence_no, fm.media_id) ASC, fm.media_id ASC`;
+  }
   let seekSql = '';
   if (q.cursor) {
     const c = decodeCursor(q.cursor, { sort: q.sort, dir: q.dir });
@@ -144,11 +200,11 @@ export function queryGallery(db: ReviewDb, q: GalleryQuery): GalleryResponse {
     seekSql = `WHERE ${pred.sql}`;
     params.push(...pred.params);
   }
-  const order = sortClause(q.sort, q.dir);
   const idRows = db
     .prepare(
       `WITH fm AS (${pageBase.sql})
-       SELECT media_id FROM fm
+       SELECT fm.media_id AS media_id FROM fm
+       ${seriesJoin}
        ${seekSql}
        ORDER BY ${order}
        LIMIT ?`,
@@ -179,7 +235,11 @@ export function queryGallery(db: ReviewDb, q: GalleryQuery): GalleryResponse {
       )
       .all(filter.projectId, ...pageIds) as Record<string, unknown>[];
     const byId = new Map(hydrated.map((r) => [Number(r.media_id), mapCard(r)]));
-    items = pageIds.map((id) => byId.get(id)!).filter(Boolean);
+    items = attachProvenance(
+      db,
+      filter.projectId,
+      pageIds.map((id) => byId.get(id)!).filter(Boolean),
+    );
   }
 
   let nextCursor: string | null = null;

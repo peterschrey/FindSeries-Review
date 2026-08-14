@@ -1,7 +1,10 @@
 import type {
   BulkRequest,
   BulkResponse,
+  CategoryNodeQuery,
   FacetsResponse,
+  FocusQuery,
+  FocusResponse,
   GalleryQuery,
   GalleryResponse,
   GroupQuery,
@@ -57,6 +60,18 @@ export function postBulk(body: BulkRequest, signal?: AbortSignal) {
 
 export function postUndo(body: UndoRequest, signal?: AbortSignal) {
   return postJson<UndoResponse>('/api/review/undo', body, signal);
+}
+
+export function fetchFocus(body: FocusQuery, signal?: AbortSignal) {
+  return postJson<FocusResponse>('/api/focus/query', body, signal);
+}
+
+export function fetchCategoryNodes(body: CategoryNodeQuery, signal?: AbortSignal) {
+  return postJson<{ nodes: import('@findseries/review-shared').CategoryNode[] }>(
+    '/api/categories/nodes',
+    body,
+    signal,
+  );
 }
 
 export function thumbUrl(mediaId: number, size = 160): string {

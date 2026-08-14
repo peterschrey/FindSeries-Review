@@ -89,6 +89,7 @@ export function Toolbar({
         <option value="category">Gruppieren: Kategorie</option>
         <option value="series">Gruppieren: Serie</option>
         <option value="uploader">Gruppieren: Uploader</option>
+        <option value="seed">Gruppieren: Seed</option>
       </select>
       <select
         className="select"

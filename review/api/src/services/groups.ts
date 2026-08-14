@@ -42,11 +42,30 @@ LEFT JOIN review_provenance_type_map rpm ON rpm.source_type = d.source_type`,
         joinParams: (projectId) => [projectId],
       };
     case 'series':
+      // Prefer primary media_series_keys; fall back to discovery series types.
       return {
-        selectKey: `COALESCE(d.source_value, d.query_text, '(ohne Serie)')`,
+        selectKey: `COALESCE(msk.series_key, COALESCE(d.source_value, d.query_text), '(ohne Serie)')`,
+        join: `
+LEFT JOIN media_series_keys msk
+  ON msk.project_id = ? AND msk.media_id = fm.media_id AND msk.is_primary = 1
+LEFT JOIN discoveries d ON d.project_id = ? AND d.media_id = fm.media_id
+  AND d.source_type IN ('filename-series','time-series','filename')
+  AND msk.media_id IS NULL`,
+        joinParams: (projectId) => [projectId, projectId],
+      };
+    case 'seed':
+      // PROVENANCE_MODEL: neighbor→media:parent OR keyword→lower(trim(query_text))
+      return {
+        selectKey: `CASE
+          WHEN COALESCE(rpm.family,'') = 'neighbor' AND d.parent_media_id IS NOT NULL
+            THEN 'media:' || d.parent_media_id
+          WHEN COALESCE(rpm.family,'') = 'keyword' AND d.query_text IS NOT NULL AND trim(d.query_text) <> ''
+            THEN lower(trim(d.query_text))
+          ELSE NULL
+        END`,
         join: `
 JOIN discoveries d ON d.project_id = ? AND d.media_id = fm.media_id
-  AND d.source_type IN ('filename-series','time-series','filename')`,
+LEFT JOIN review_provenance_type_map rpm ON rpm.source_type = d.source_type`,
         joinParams: (projectId) => [projectId],
       };
     case 'category':
@@ -105,6 +124,8 @@ function drilldownFor(
       };
     case 'series':
       return { ...common, seriesKey: key };
+    case 'seed':
+      return { ...common, seedKey: key };
     case 'provenance': {
       const sourceType = key.includes(':') ? key.slice(key.indexOf(':') + 1) : key;
       return { ...common, sourceTypes: [sourceType] };
@@ -166,6 +187,7 @@ export function queryGroups(db: ReviewDb, q: GroupQuery): GroupsResponse {
        SELECT ${selectKey} AS gkey, COUNT(DISTINCT fm.media_id) AS approx_total
        FROM fm
        ${join}
+       WHERE ${selectKey} IS NOT NULL
        GROUP BY gkey
        ORDER BY approx_total DESC
        LIMIT ?`,
@@ -179,6 +201,7 @@ export function queryGroups(db: ReviewDb, q: GroupQuery): GroupsResponse {
     let sampleMedia: MediaCard[] = [];
     if (q.sampleSize > 0) {
       const sampleBase = buildFilteredMediaCte(drill);
+      // Deterministic samples: lowest media_id (stable, not random)
       sampleMedia = (
         db
           .prepare(

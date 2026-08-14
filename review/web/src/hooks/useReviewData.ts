@@ -19,6 +19,8 @@ export type GalleryModel = {
   error: string | null;
   loadMore: () => void;
   resetKey: string;
+  /** Increments after each successful first-page load (for auto-advance). */
+  loadGeneration: number;
 };
 
 function galleryKey(state: ReviewUiState): string {
@@ -40,17 +42,12 @@ function facetsKey(state: ReviewUiState): string {
   return JSON.stringify(toGlobalMediaFilter(state));
 }
 
-function inventoryKey(projectId: number): string {
-  return `inv:${projectId}`;
-}
-
 function emptySafe(): StatusCounts {
   return { unreviewed: 0, keep: 0, reject: 0, unsure: 0, total: 0 };
 }
 
-export function useInventoryCounts(projectId: number): StatusCounts {
+export function useInventoryCounts(projectId: number, mutationEpoch = 0): StatusCounts {
   const [counts, setCounts] = useState<StatusCounts>(emptySafe());
-  const key = inventoryKey(projectId);
 
   useEffect(() => {
     const ac = new AbortController();
@@ -72,12 +69,15 @@ export function useInventoryCounts(projectId: number): StatusCounts {
         /* ignore */
       });
     return () => ac.abort();
-  }, [key, projectId]);
+  }, [projectId, mutationEpoch]);
 
   return counts;
 }
 
-export function useGalleryData(state: ReviewUiState, reloadToken = 0): GalleryModel {
+export function useGalleryData(
+  state: ReviewUiState,
+  mutationEpoch = 0,
+): GalleryModel {
   const [items, setItems] = useState<MediaCard[]>([]);
   const [total, setTotal] = useState(0);
   const [statusCounts, setStatusCounts] = useState(emptySafe());
@@ -85,6 +85,7 @@ export function useGalleryData(state: ReviewUiState, reloadToken = 0): GalleryMo
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadGeneration, setLoadGeneration] = useState(0);
   const key = galleryKey(state);
   const keyRef = useRef(key);
   const cursorRef = useRef<string | null>(null);
@@ -121,6 +122,7 @@ export function useGalleryData(state: ReviewUiState, reloadToken = 0): GalleryMo
         setStatusCounts(res.statusCounts);
         setNextCursor(res.nextCursor);
         cursorRef.current = res.nextCursor;
+        setLoadGeneration((g) => g + 1);
       })
       .catch((e: unknown) => {
         if (ac.signal.aborted) return;
@@ -131,7 +133,7 @@ export function useGalleryData(state: ReviewUiState, reloadToken = 0): GalleryMo
         if (keyRef.current === key) setLoading(false);
       });
     return () => ac.abort();
-  }, [key, reloadToken]);
+  }, [key, mutationEpoch]);
 
   const loadMore = () => {
     const cursor = cursorRef.current;
@@ -185,10 +187,14 @@ export function useGalleryData(state: ReviewUiState, reloadToken = 0): GalleryMo
     error,
     loadMore,
     resetKey: key,
+    loadGeneration,
   };
 }
 
-export function useGroupsData(state: ReviewUiState): {
+export function useGroupsData(
+  state: ReviewUiState,
+  mutationEpoch = 0,
+): {
   groups: GroupsResponse['groups'];
   loading: boolean;
   error: string | null;
@@ -199,9 +205,12 @@ export function useGroupsData(state: ReviewUiState): {
   const key = groupsKey(state);
   const stateRef = useRef(state);
   stateRef.current = state;
+  const reqIdRef = useRef(0);
 
   useEffect(() => {
     const ac = new AbortController();
+    const reqId = ++reqIdRef.current;
+    // Background refresh: do not clear previous groups immediately (avoid UI blank 2s)
     setLoading(true);
     setError(null);
     const filter = toGlobalMediaFilter(stateRef.current);
@@ -215,21 +224,27 @@ export function useGroupsData(state: ReviewUiState): {
       ac.signal,
     )
       .then((res) => {
-        if (!ac.signal.aborted) setGroups(res.groups);
+        if (ac.signal.aborted || reqId !== reqIdRef.current) return;
+        setGroups(res.groups);
       })
       .catch((e: unknown) => {
-        if (!ac.signal.aborted) setError(e instanceof Error ? e.message : String(e));
+        if (!ac.signal.aborted && reqId === reqIdRef.current) {
+          setError(e instanceof Error ? e.message : String(e));
+        }
       })
       .finally(() => {
-        if (!ac.signal.aborted) setLoading(false);
+        if (!ac.signal.aborted && reqId === reqIdRef.current) setLoading(false);
       });
     return () => ac.abort();
-  }, [key]);
+  }, [key, mutationEpoch]);
 
   return { groups, loading, error };
 }
 
-export function useFacetsData(state: ReviewUiState): {
+export function useFacetsData(
+  state: ReviewUiState,
+  mutationEpoch = 0,
+): {
   facets: FacetsResponse | null;
   loading: boolean;
 } {
@@ -238,22 +253,24 @@ export function useFacetsData(state: ReviewUiState): {
   const key = facetsKey(state);
   const stateRef = useRef(state);
   stateRef.current = state;
+  const reqIdRef = useRef(0);
 
   useEffect(() => {
     const ac = new AbortController();
+    const reqId = ++reqIdRef.current;
     setLoading(true);
     fetchFacets(toGlobalMediaFilter(stateRef.current), ac.signal)
       .then((res) => {
-        if (!ac.signal.aborted) setFacets(res);
+        if (!ac.signal.aborted && reqId === reqIdRef.current) setFacets(res);
       })
       .catch(() => {
         /* ignore */
       })
       .finally(() => {
-        if (!ac.signal.aborted) setLoading(false);
+        if (!ac.signal.aborted && reqId === reqIdRef.current) setLoading(false);
       });
     return () => ac.abort();
-  }, [key]);
+  }, [key, mutationEpoch]);
 
   return { facets, loading };
 }
