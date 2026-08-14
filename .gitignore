@@ -10,9 +10,9 @@ Workspace/
 **/*.sqlite
 **/*.sqlite3
 
-# Media and review exports
+# Media and review exports (workspace runtime, not source)
 Media/
-Review/
+/Review/
 Logs/
 Diagnostics/
 Temp/
