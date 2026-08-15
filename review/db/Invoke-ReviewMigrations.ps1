@@ -125,6 +125,6 @@ Rollback (supported):
 2. Restore from the SQLite .backup file created with -Backup.
 3. Prefer backup-restore over SQL DROP scripts.
 
-SQL rollback file ROLLBACK_100_104.sql is best-effort only (pre-105).
-Migration 105 adds indexes only — drop via DROP INDEX IF EXISTS if needed.
+SQL rollback file ROLLBACK_100_105.sql is best-effort only
+(supersedes ROLLBACK_100_104.sql; includes DROP INDEX for migration 105).
 #>

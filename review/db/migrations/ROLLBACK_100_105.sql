@@ -1,12 +1,14 @@
--- SUPERSEDED by ROLLBACK_100_105.sql (includes migration 105 index drops).
--- Prefer ROLLBACK_100_105.sql for Review migrations 100–105.
---
 -- WARNING: Prefer restoring a SQLite .backup created by Invoke-ReviewMigrations.ps1 -Backup.
 -- This SQL rollback is best-effort and DESTRUCTIVE for Review-MVP objects.
 -- Do NOT run against a production database.
+--
+-- Covers Review migrations 100–105.
+-- Migration 105 adds indexes only (no new tables); drop those indexes explicitly below.
+--
+-- Prefer: restore pre-migration .backup over SQL DROP scripts.
 
 -- Uncomment the following line only after intentional review:
--- SELECT CASE WHEN 1 THEN RAISE(ABORT,'Refusing ROLLBACK_100_104.sql without explicit edit') END;
+-- SELECT CASE WHEN 1 THEN RAISE(ABORT,'Refusing ROLLBACK_100_105.sql without explicit edit') END;
 
 BEGIN IMMEDIATE;
 
@@ -30,7 +32,12 @@ DROP INDEX IF EXISTS ix_categories_title;
 DROP INDEX IF EXISTS ix_categories_normalized_title;
 DROP INDEX IF EXISTS ix_project_categories_parent;
 
-DELETE FROM review_schema_migrations WHERE version IN (100,101,102,103,104);
+-- Indexes added by migration 105 (perf helpers only)
+DROP INDEX IF EXISTS ix_discoveries_project_media_source;
+DROP INDEX IF EXISTS ix_discoveries_project_series_types;
+DROP INDEX IF EXISTS ix_discoveries_project_keyword_query;
+
+DELETE FROM review_schema_migrations WHERE version IN (100,101,102,103,104,105);
 DROP TABLE IF EXISTS review_schema_migrations;
 -- Never touch core schema_migrations for Review versions.
 COMMIT;

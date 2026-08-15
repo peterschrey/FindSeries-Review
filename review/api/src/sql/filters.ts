@@ -204,7 +204,22 @@ function buildWhere(filter: MediaFilter): { where: string[]; params: unknown[]; 
     )`);
     params.push(filter.seedKey, filter.seedKey);
   }
-  if (filter.seriesKey) {
+  if (filter.seriesKey === '(ohne Serie)') {
+    // Mirror groups.ts series bucket: no primary key and no usable series discovery label.
+    where.push(`(
+      NOT EXISTS (
+        SELECT 1 FROM media_series_keys msk
+        WHERE msk.project_id = pm.project_id AND msk.media_id = pm.media_id
+          AND msk.is_primary = 1
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM discoveries dser
+        WHERE dser.project_id = pm.project_id AND dser.media_id = pm.media_id
+          AND dser.source_type IN ('filename-series','time-series','filename')
+          AND COALESCE(dser.source_value, dser.query_text) IS NOT NULL
+      )
+    )`);
+  } else if (filter.seriesKey) {
     where.push(`(
       EXISTS (
         SELECT 1 FROM media_series_keys msk

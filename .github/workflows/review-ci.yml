@@ -1,0 +1,98 @@
+name: Review CI (FRV-42)
+
+# Synthetic-DB release gate — never uses production / 19GB databases.
+on:
+  push:
+    branches: [review-mvp, main, master]
+    paths:
+      - 'review/**'
+      - 'scripts/Invoke-ReviewTests.ps1'
+      - 'scripts/Invoke-ReviewMigrationSmoke.ps1'
+      - 'package.json'
+      - '.github/workflows/review-ci.yml'
+      - 'Tools/sqlite3.exe'
+  pull_request:
+    branches: [review-mvp, main, master]
+    paths:
+      - 'review/**'
+      - 'scripts/Invoke-ReviewTests.ps1'
+      - 'scripts/Invoke-ReviewMigrationSmoke.ps1'
+      - 'package.json'
+      - '.github/workflows/review-ci.yml'
+      - 'Tools/sqlite3.exe'
+  workflow_dispatch:
+
+jobs:
+  review-gate:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+          cache: npm
+          cache-dependency-path: |
+            review/shared/package-lock.json
+            review/api/package-lock.json
+            review/web/package-lock.json
+
+      - name: Verify bundled sqlite3.exe
+        run: |
+          if (-not (Test-Path 'Tools/sqlite3.exe')) {
+            throw 'Tools/sqlite3.exe missing — required for synthetic fixture creation on Windows'
+          }
+
+      - name: Install shared
+        working-directory: review/shared
+        run: npm ci
+
+      - name: Build shared
+        working-directory: review/shared
+        run: npm run build
+
+      - name: Install api
+        working-directory: review/api
+        run: npm ci
+
+      - name: Install web
+        working-directory: review/web
+        run: npm ci
+
+      - name: API tests (synthetic DB only)
+        working-directory: review/api
+        run: npm test
+
+      - name: Web tests
+        working-directory: review/web
+        run: npm test
+
+      - name: Typecheck shared
+        working-directory: review/shared
+        run: npm run typecheck
+
+      - name: Typecheck api
+        working-directory: review/api
+        run: npm run typecheck
+
+      - name: Typecheck web
+        working-directory: review/web
+        run: npm run typecheck
+
+      - name: Production build api
+        working-directory: review/api
+        run: npm run build
+
+      - name: Production build web
+        working-directory: review/web
+        run: npm run build
+
+      - name: Optional migration smoke (tiny fixture copy)
+        run: ./scripts/Invoke-ReviewMigrationSmoke.ps1

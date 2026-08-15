@@ -1,0 +1,10 @@
+{
+  "name": "findseries-review-workspace",
+  "private": true,
+  "description": "Root scripts for FindSeries Review-MVP local gates (FRV-42)",
+  "scripts": {
+    "test": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/Invoke-ReviewTests.ps1",
+    "test:gate": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/Invoke-ReviewTests.ps1 -SkipInstall",
+    "test:migration-smoke": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/Invoke-ReviewMigrationSmoke.ps1"
+  }
+}
