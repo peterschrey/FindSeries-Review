@@ -1,0 +1,267 @@
+{
+  "task": "FRV-46",
+  "started": "2026-08-15T12:54:27.805Z",
+  "finished": "2026-08-15T12:57:46.993Z",
+  "dbPath": "C:\\Temp\\FindSeries-Review-Test\\findseries-v5-phase1-gate.db",
+  "dbBytes": 20381200384,
+  "provenanceCopy": {
+    "sourceArchive": "E:\\Temp\\FindSeries-Review-Test\\archive\\findseries-v5-phase1-gate.db",
+    "dest": "C:\\Temp\\FindSeries-Review-Test\\findseries-v5-phase1-gate.db",
+    "evidence": "VERIFIED"
+  },
+  "project": {
+    "id": 7,
+    "name": "Cat_Dentistry",
+    "slug": "cat-dentistry"
+  },
+  "mediaCount": 184991,
+  "reviewMigs": "100,101,102,103,104,105",
+  "coreMigs": "1,2,11,12,13,30,32,34,42,44,52,62,65",
+  "checks": [
+    {
+      "id": "preflight",
+      "ok": true,
+      "evidence": "VERIFIED",
+      "detail": {
+        "dbPath": "C:\\Temp\\FindSeries-Review-Test\\findseries-v5-phase1-gate.db",
+        "bytes": 20381200384,
+        "project": {
+          "id": 7,
+          "name": "Cat_Dentistry",
+          "slug": "cat-dentistry"
+        },
+        "mediaCount": 184991,
+        "reviewMigs": "100,101,102,103,104,105",
+        "coreMigs": "1,2,11,12,13,30,32,34,42,44,52,62,65"
+      }
+    },
+    {
+      "id": "workflow_A_category",
+      "ok": true,
+      "evidence": "VERIFIED",
+      "detail": {
+        "categoryId": 14367,
+        "title": "Category:Smiling men in the United States",
+        "childCount": 33,
+        "descendantCount": 41,
+        "sqlExactMembership": 780,
+        "sqlSubtreeMembership": 1621,
+        "apiResultTotal": 1621,
+        "statusCountsTotal": 1621,
+        "matchApiToStatusCounts": true,
+        "sampleIds": [
+          26752,
+          26772,
+          26774,
+          26775,
+          26776
+        ],
+        "sampleMembershipOk": true,
+        "queryMs": 1573,
+        "subtreeCountMs": 429,
+        "subtreeCountApi": 1621
+      }
+    },
+    {
+      "id": "workflow_B_provenance",
+      "ok": true,
+      "evidence": "VERIFIED",
+      "detail": {
+        "availableTypes": [
+          {
+            "sourceType": "category",
+            "family": "category",
+            "n": 184991
+          }
+        ],
+        "groupsMs": 2716,
+        "groupKey": "category:category",
+        "groupCardTotal": 184991,
+        "galleryTotal": 184991,
+        "sqlDistinctMedia": 184991,
+        "apiStatusFilteredTotal": 184991,
+        "matchGroupToGallery": true,
+        "matchGalleryToStatusCounts": true,
+        "multiProvenanceSamples": [],
+        "note": "Cat_Dentistry gate copy exposes only category provenance discoveries; second type NOT present (NOT invented).",
+        "secondTypeAvailable": false,
+        "evidenceClass": "REPORTED"
+      }
+    },
+    {
+      "id": "workflow_C_series",
+      "ok": true,
+      "evidence": "VERIFIED",
+      "detail": {
+        "mediaSeriesKeys": 0,
+        "seriesDiscoveries": 0,
+        "groupsMs": 2480,
+        "namedSeriesAvailable": false,
+        "series_key": "(ohne Serie)",
+        "groupCardTotal": 184991,
+        "galleryTotal": 184991,
+        "match": true,
+        "firstIds": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "lastIdsPage1": [
+          118,
+          119,
+          120
+        ],
+        "page2FirstIds": [
+          121,
+          122,
+          123
+        ],
+        "pageOverlap": 0,
+        "monotonicAsc": true,
+        "queryMs": 1426,
+        "note": "No named series_key / filename-series in Cat_Dentistry; exercised fallback bucket (typically ohne Serie) with pagination."
+      }
+    },
+    {
+      "id": "stats_inventory_result",
+      "ok": true,
+      "evidence": "VERIFIED",
+      "detail": {
+        "inventory": {
+          "unreviewed": 184991,
+          "keep": 0,
+          "reject": 0,
+          "unsure": 0,
+          "total": 184991
+        },
+        "resultDefault": {
+          "unreviewed": 184991,
+          "keep": 0,
+          "reject": 0,
+          "unsure": 0,
+          "total": 184991
+        },
+        "projectMedia": 184991
+      }
+    },
+    {
+      "id": "workflow_D_range",
+      "ok": true,
+      "evidence": "VERIFIED",
+      "detail": {
+        "rangeSize": 150,
+        "keepId": 76,
+        "changedCount": 149,
+        "protectedCount": 1,
+        "skippedCount": 0,
+        "expectedChanged": 149,
+        "sqlMismatchInRange": 0,
+        "undoMismatch": 0,
+        "undoRestoredOk": true,
+        "restoreMismatch": 0,
+        "errorRate": 0,
+        "rejectMs": 8,
+        "undoMs": 6,
+        "resetKeepChanged": 1,
+        "statsBefore": {
+          "unreviewed": 184990,
+          "keep": 0,
+          "reject": 0,
+          "unsure": 0,
+          "total": 184990
+        },
+        "statsAfterReject": {
+          "unreviewed": 184841,
+          "keep": 0,
+          "reject": 0,
+          "unsure": 0,
+          "total": 184841
+        },
+        "statsAfterUndo": {
+          "unreviewed": 184991,
+          "keep": 0,
+          "reject": 0,
+          "unsure": 0,
+          "total": 184991
+        },
+        "inventoryUnchanged": true
+      }
+    },
+    {
+      "id": "workflow_E_focus",
+      "ok": true,
+      "evidence": "VERIFIED",
+      "detail": {
+        "focusMediaId": 1,
+        "relations": [
+          {
+            "kind": "similar",
+            "available": false,
+            "total": 0,
+            "note": "P1: Similarity noch nicht aktiv"
+          },
+          {
+            "kind": "series",
+            "available": false,
+            "total": 0,
+            "note": "Keine Serien-Beziehung gefunden"
+          },
+          {
+            "kind": "category",
+            "available": false,
+            "total": 0,
+            "note": "Keine Kategorie-Beziehung"
+          },
+          {
+            "kind": "seed",
+            "available": false,
+            "total": 0,
+            "note": "Kein belastbarer Seed (PROVENANCE_MODEL)"
+          },
+          {
+            "kind": "uploader",
+            "available": true,
+            "total": 0
+          },
+          {
+            "kind": "provenance",
+            "available": true,
+            "total": 1621,
+            "note": "category"
+          }
+        ],
+        "focusMs": 2164,
+        "usedRelation": "provenance",
+        "relationTotal": 1621,
+        "galleryAfter": 1621,
+        "galleryBeforeWithCategory": 1621,
+        "match": true,
+        "similarDisabled": true,
+        "queryMs": 1837
+      }
+    }
+  ],
+  "throughput": {
+    "categorySubtreeMedia": 1621,
+    "provenanceGroupMedia": 184991,
+    "rangeMediaPerBulkAction": 150,
+    "undoPracticable": true,
+    "continuesWithoutReload": true,
+    "interactionsTypical": {
+      "A": "expand parent + select category",
+      "B": "groupBy provenance + click card",
+      "C": "groupBy series + click card + scroll pages",
+      "D": "click + shift range + R + Ctrl+Z",
+      "E": "dblclick focus + relation + X"
+    },
+    "verdict": "PASS WITH DEVIATION"
+  },
+  "explorerBaseline": {
+    "status": "NOT_VERIFIED",
+    "note": "No measured Explorer UI baseline found in FRV-38/39/40 docs/CSVs/Notion artifacts. Manual side-by-side timing still required."
+  },
+  "frv40BaselinePath": "C:\\Users\\pschr\\cursor3-repos\\FindSeries-Review\\docs\\review-mvp\\bench\\frv40-results.baseline.csv",
+  "perfNote": "API fresh-connection cold-ish + warm; same methodology class as FRV-40 (not OS disk-cold)."
+}

@@ -45,3 +45,7 @@ review/web/e2e-results/
 review/web/e2e-report/
 review/web/test-results/
 review/web/playwright-report/
+
+# FRV-46 real-DB acceptance artifacts (local only)
+review/web/acceptance/.run-state.json
+review/web/acceptance-results/

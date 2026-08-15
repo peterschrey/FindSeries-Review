@@ -9,6 +9,7 @@
     "test:launcher-helpers": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/Test-ReviewLauncherHelpers.ps1",
     "test:launcher-smoke": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/Invoke-Frv45LauncherSmoke.ps1",
     "test:e2e": "npm --prefix review/web run test:e2e",
-    "test:e2e:headed": "npm --prefix review/web run test:e2e:headed"
+    "test:e2e:headed": "npm --prefix review/web run test:e2e:headed",
+    "test:frv46": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/Invoke-Frv46RealDbAcceptance.ps1"
   }
 }
