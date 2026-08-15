@@ -1,0 +1,36 @@
+﻿{
+    "capturedAt":  "2026-08-15T10:25:01.6592200Z",
+    "databasePath":  "C:\\Temp\\FindSeries-Review-Test\\frv44-work.db",
+    "fileSizeBytes":  20233146368,
+    "projects":  7,
+    "media":  305212,
+    "project_media":  446882,
+    "discoveries":  1361985,
+    "downloads":  129787,
+    "categories":  15640,
+    "project_categories":  18444,
+    "coreSchemaMigrations":  "1,2,11,12,13,30,32,34,42,44,52,62,65",
+    "reviewTablePresent":  false,
+    "reviewSchemaMigrations":  "(none)",
+    "schemaFingerprint":  "1,2,11,12,13,30,32,34,42,44,52,62,65|tables=30|indexes=47",
+    "foreign_key_check":  {
+                              "output":  "",
+                              "status":  "PASS",
+                              "exitCode":  0,
+                              "elapsedMs":  60504
+                          },
+    "quick_check":  {
+                        "output":  "ok",
+                        "status":  "PASS",
+                        "exitCode":  0,
+                        "elapsedMs":  211536
+                    },
+    "integrity_check":  {
+                            "output":  "ok",
+                            "status":  "PASS",
+                            "exitCode":  0,
+                            "elapsedMs":  302046
+                        },
+    "cFreeGBStart":  27.25,
+    "cFreeGBAfterChecks":  27.27
+}

@@ -1,0 +1,13 @@
+﻿{
+    "phase":  "A",
+    "copySeconds":  175.7,
+    "source":  "E:\\Temp\\FindSeries-Review-Test\\frv44-baseline.db",
+    "dest":  "C:\\Temp\\FindSeries-Review-Test\\frv44-work.db",
+    "sourceBytes":  20233146368,
+    "destBytes":  20233146368,
+    "sourceStillPresent":  true,
+    "cFreeGBBefore":  46.09,
+    "cFreeGBAfter":  27.25,
+    "prodUntouchedSize":  20233146368,
+    "prodMtimeUtc":  "2026-08-14T22:59:40.0083512Z"
+}

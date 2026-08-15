@@ -16,6 +16,13 @@ if(-not $MigrationsDir){$MigrationsDir=Join-Path $root 'review\db\migrations'}
 if(-not(Test-Path -LiteralPath $SqlitePath)){throw "sqlite3 not found: $SqlitePath"}
 if(-not(Test-Path -LiteralPath $DatabasePath)){throw "database not found: $DatabasePath"}
 
+# Hard stop: never apply Review migrations to the productive FindSeries DB.
+$productionDb = [IO.Path]::GetFullPath('C:\FindSeriesV5-Workspace\findseries-v5.db').ToLowerInvariant()
+$targetDb = [IO.Path]::GetFullPath($DatabasePath).ToLowerInvariant()
+if($targetDb -eq $productionDb){
+    throw "REFUSING Review migrations on productive database: $DatabasePath"
+}
+
 $versions=@(100,101,102,103,104,105)
 $files=@(
     '100_review_status.sql',

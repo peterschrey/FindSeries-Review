@@ -1,0 +1,18 @@
+﻿{
+    "finalizedAt":  "2026-08-15T10:36:50.7972558Z",
+    "checklist":  {
+                      "baselineCounts":  true,
+                      "coreSchemaMigrations":  true,
+                      "fullSchemaFingerprint":  true,
+                      "baselineFkQuickIntegrity":  true,
+                      "reviewMigrations100_105":  true,
+                      "coreLeakZero":  true,
+                      "idempotency":  true,
+                      "postMigFkQuick":  true,
+                      "smokeMediaId":  1,
+                      "smokeSparseUndoSparse":  true,
+                      "sizeBeforeMig":  20233146368,
+                      "sizeAfterMig":  20363804672
+                  },
+    "notes":  "Evidence taken from SSD interim/snapshot; no additional full-DB checks before work delete."
+}

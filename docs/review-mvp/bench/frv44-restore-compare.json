@@ -1,0 +1,40 @@
+﻿{
+    "status":  "PASS",
+    "diffs":  [
+
+              ],
+    "restored":  {
+                     "path":  "C:\\Temp\\FindSeries-Review-Test\\frv44-restored.db",
+                     "fileSizeBytes":  20233146368,
+                     "counts":  {
+                                    "projects":  7,
+                                    "downloads":  129787,
+                                    "discoveries":  1361985,
+                                    "categories":  15640,
+                                    "project_media":  446882,
+                                    "project_categories":  18444,
+                                    "media":  305212
+                                },
+                     "coreSchemaMigrations":  "1,2,11,12,13,30,32,34,42,44,52,62,65",
+                     "reviewTablePresent":  false,
+                     "reviewSchemaMigrations":  "(none)",
+                     "schemaFingerprint":  "1,2,11,12,13,30,32,34,42,44,52,62,65|tables=30|indexes=47",
+                     "user_version":  "0",
+                     "page_size":  "4096",
+                     "media1":  "sparse-unreviewed (no review tables)",
+                     "foreign_key_check":  {
+                                               "status":  "PASS",
+                                               "elapsedMs":  60269
+                                           },
+                     "quick_check":  {
+                                         "status":  "PASS",
+                                         "elapsedMs":  190198
+                                     }
+                 },
+    "baselineFingerprintExactMatch":  true,
+    "baselineCoreExactMatch":  true,
+    "negativeProof":  {
+                          "noReview100_105":  true,
+                          "media1BaselineSparse":  true
+                      }
+}

@@ -1,0 +1,9 @@
+﻿{
+    "copySeconds":  175.1,
+    "source":  "E:\\Temp\\FindSeries-Review-Test\\frv44-baseline.db",
+    "dest":  "C:\\Temp\\FindSeries-Review-Test\\frv44-restored.db",
+    "bytes":  20233146368,
+    "sourceStillPresent":  true,
+    "cFreeGBAfter":  27.25,
+    "cFreeGBAfterWorkDelete":  46.1
+}

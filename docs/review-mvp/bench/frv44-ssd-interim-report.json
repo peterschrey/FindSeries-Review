@@ -1,0 +1,85 @@
+﻿{
+    "status":  "PASS_READY_FOR_RESTORE",
+    "finishedAt":  "2026-08-15T10:26:09.2078411Z",
+    "phaseA":  {
+                   "phase":  "A",
+                   "copySeconds":  175.7,
+                   "source":  "E:\\Temp\\FindSeries-Review-Test\\frv44-baseline.db",
+                   "dest":  "C:\\Temp\\FindSeries-Review-Test\\frv44-work.db",
+                   "sourceBytes":  20233146368,
+                   "destBytes":  20233146368,
+                   "sourceStillPresent":  true,
+                   "cFreeGBBefore":  46.09,
+                   "cFreeGBAfter":  27.25,
+                   "prodUntouchedSize":  20233146368,
+                   "prodMtimeUtc":  "2026-08-14T22:59:40.0083512Z"
+               },
+    "baselineSnapshot":  {
+                             "capturedAt":  "2026-08-15T10:25:01.6592200Z",
+                             "databasePath":  "C:\\Temp\\FindSeries-Review-Test\\frv44-work.db",
+                             "fileSizeBytes":  20233146368,
+                             "projects":  7,
+                             "media":  305212,
+                             "project_media":  446882,
+                             "discoveries":  1361985,
+                             "downloads":  129787,
+                             "categories":  15640,
+                             "project_categories":  18444,
+                             "coreSchemaMigrations":  "1,2,11,12,13,30,32,34,42,44,52,62,65",
+                             "reviewTablePresent":  false,
+                             "reviewSchemaMigrations":  "(none)",
+                             "schemaFingerprint":  "1,2,11,12,13,30,32,34,42,44,52,62,65|tables=30|indexes=47",
+                             "foreign_key_check":  {
+                                                       "output":  "",
+                                                       "status":  "PASS",
+                                                       "exitCode":  0,
+                                                       "elapsedMs":  60504
+                                                   },
+                             "quick_check":  {
+                                                 "output":  "ok",
+                                                 "status":  "PASS",
+                                                 "exitCode":  0,
+                                                 "elapsedMs":  211536
+                                             },
+                             "integrity_check":  {
+                                                     "output":  "ok",
+                                                     "status":  "PASS",
+                                                     "exitCode":  0,
+                                                     "elapsedMs":  302046
+                                                 },
+                             "cFreeGBStart":  27.25,
+                             "cFreeGBAfterChecks":  27.27
+                         },
+    "postMigrate":  {
+                        "reviewSchemaMigrations":  "100,101,102,103,104,105",
+                        "coreSchemaMigrations":  "1,2,11,12,13,30,32,34,42,44,52,62,65",
+                        "coreUnchanged":  true,
+                        "leakedReviewIntoCore":  0,
+                        "idempotentSecondApply":  true,
+                        "migrationSeconds":  10.3,
+                        "foreign_key_check":  {
+                                                  "output":  "",
+                                                  "status":  "PASS",
+                                                  "exitCode":  0,
+                                                  "elapsedMs":  20165
+                                              },
+                        "quick_check":  {
+                                            "output":  "ok",
+                                            "status":  "PASS",
+                                            "exitCode":  0,
+                                            "elapsedMs":  30280
+                                        },
+                        "fileSizeBytes":  20363804672
+                    },
+    "reviewSmoke":  {
+                        "output":  "{\"ok\":true,\"projects\":7,\"galleryTotal\":184991,\"categoryNodes\":1385,\"groups\":3,\"focusRelations\":6,\"smokeMediaId\":1,\"priorStatus\":\"sparse-unreviewed\",\"afterUndo\":\"sparse-unreviewed\",\"undoRestored\":1,\"sparseRestored\":true}",
+                        "exitCode":  0,
+                        "parsed":  "{\"ok\":true,\"projects\":7,\"galleryTotal\":184991,\"categoryNodes\":1385,\"groups\":3,\"focusRelations\":6,\"smokeMediaId\":1,\"priorStatus\":\"sparse-unreviewed\",\"afterUndo\":\"sparse-unreviewed\",\"undoRestored\":1,\"sparseRestored\":true}"
+                    },
+    "workDb":  {
+                   "bytes":  20363804672,
+                   "path":  "C:\\Temp\\FindSeries-Review-Test\\frv44-work.db"
+               },
+    "cFreeGBNow":  27.15,
+    "notes":  "No restore yet. Work DB kept. No integrity after migration per DoD."
+}
