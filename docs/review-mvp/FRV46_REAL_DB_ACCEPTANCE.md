@@ -12,6 +12,8 @@
 | REPORTED | aus Fixture/DB-Lage dokumentiert, nicht erfunden |
 | INFERRED | aus Messdaten abgeleitet |
 | NOT_VERIFIED | fehlt / nicht gemessen |
+| DATA_GAP | Feature-Pfad vorhanden, reale Datenlage unzureichend |
+| NOT_AVAILABLE | Datentyp/Pfad auf dieser DB nicht vorhanden (nicht erfunden) |
 
 ## DB provenance
 
@@ -19,159 +21,161 @@
 |---|---|---|
 | Produktiv-DB | `C:\FindSeriesV5-Workspace\findseries-v5.db` | **nie angefasst** |
 | Archivquelle | `E:\Temp\FindSeries-Review-Test\archive\findseries-v5-phase1-gate.db` (20 306 485 248 B) | VERIFIED vorhanden, unverändert belassen |
-| Arbeit (SSD) | `C:\Temp\FindSeries-Review-Test\findseries-v5-phase1-gate.db` | VERIFIED Kopie sequentiell (≈177 s), Größenmatch |
-| C: free after copy | ≈26.7 GB | VERIFIED ≥20 GB |
-| Project | **7 / Cat_Dentistry** | VERIFIED |
+| Arbeit (SSD) | `C:\Temp\FindSeries-Review-Test\findseries-v5-phase1-gate.db` | VERIFIED Kopie sequentiell, Größenmatch |
+| Project (Haupt) | **7 / Cat_Dentistry** | VERIFIED |
 | Medien (`project_media`) | **184 991** | VERIFIED |
-| Review migrations | **100–105** (105 nachgezogen auf Kopie) | VERIFIED |
-| Core `schema_migrations` | unverändert `1,2,11,12,13,30,32,34,42,44,52,62,65` | VERIFIED |
-| `PRAGMA foreign_key_check` | leer/OK | VERIFIED |
-| `PRAGMA quick_check` | `ok` | VERIFIED |
+| Review migrations | **100–105** | VERIFIED |
+| Core `schema_migrations` | unverändert | VERIFIED |
+| `PRAGMA foreign_key_check` / `quick_check` | OK | VERIFIED |
 
 Maschinenlesbar: `docs/review-mvp/bench/frv46-acceptance.json`
 
 ## Commands
 
 ```powershell
-# Gate-Kopie muss auf C: liegen (nicht E: querien)
+# Finaler Acceptance-Pfad (API/SQL → Browser → Cleanup):
 npm run test:frv46
-# oder
+
+# Diagnose ohne Browser:
 .\scripts\Invoke-Frv46RealDbAcceptance.ps1 -SkipBrowser
+
+# Nur Browser (nach Build):
+npm --prefix review/web run test:frv46
 ```
 
-API/SQL-Kern: `review/api/scripts/frv46-acceptance.ts`  
-Optional Browser: `review/web/acceptance/` + `playwright.frv46.config.ts` (lokal; **nicht** CI)
+`-SkipBrowser` ist **nicht** der finale Gate-Pfad.
 
 ## Workflow A — Kategorieast
 
 | Field | Value |
 |---|---|
 | Parent | **14367** `Category:Smiling men in the United States` |
-| Real children | 33 (JOIN, nicht stale `child_count`) |
+| Real children | 33 |
 | Descendants | 41 |
-| SQL exact membership | 780 |
-| SQL subtree membership | 1621 |
+| SQL exact / subtree | 780 / 1621 |
 | API/UI result (unreviewed+unsure) | 1621 |
-| Sample membership | 5/5 OK (CATEGORY_GRAPH) |
-| Query | ≈1573 ms gallery / ≈429 ms subtree count |
-| Evidence | **VERIFIED** |
+| Evidence | **VERIFIED** (API/SQL + Browser) |
 
 ## Workflow B — Herkunft / Provenienz
 
 | Field | Value |
 |---|---|
 | Types in Cat_Dentistry | **nur** `category` (184 991 Medien) |
-| Zweiter Typ | **nicht vorhanden** — nicht erfunden | REPORTED |
-| GroupCard `category:category` | 184 991 |
-| Gallery drilldown | 184 991 MATCH |
-| Multi-Provenienz-Stichprobe | 0 (nur ein Typ) |
-| Evidence | **VERIFIED** (ein Typ) + **REPORTED** Abweichung |
+| category provenance | **VERIFIED** |
+| Zweiter Provenienztyp | **NOT_AVAILABLE** (nicht erfunden) |
+| GroupCard → Drilldown | 184 991 MATCH |
+| Evidence | **VERIFIED** (category) + **NOT_AVAILABLE** (zweiter Typ) |
 
 ## Workflow C — Serie
+
+### C1 Cat_Dentistry (Hauptprojekt)
 
 | Field | Value |
 |---|---|
 | `media_series_keys` | 0 |
 | filename-/time-series discoveries | 0 |
 | Genutzter Bucket | `(ohne Serie)` total **184 991** |
-| Pagination | page1/page2 overlap **0**, monotonic ASC |
-| Evidence | **VERIFIED** Fallback; named series **REPORTED** missing |
+| Pagination | overlap 0, monotonic ASC |
+| Named-series journey | **DATA_GAP** — kein named Series in Cat_Dentistry |
+| Evidence | Fallback **REPORTED**/ok als Fallback-Test; **nicht** als vollständige Series-Verifikation |
+
+### C2 Supplemental (gleiche C:-Gate-DB)
+
+| Field | Value |
+|---|---|
+| Project | **9 / Dental_Context_Search** |
+| Series key | `02866_New_Luce_Church_of_Scotland,_New_Luce_` |
+| Typ | reale `filename-series` (≥2 Medien) |
+| GroupCard / Drilldown / Pagination | ausgeübt |
+| Fokus-Series-Relation | soweit vorhanden |
+| SQL↔API/UI | gegengeprüft |
+| Evidence | **VERIFIED** (kein künstliches Seed) |
 
 ## Workflow D — Range Review
 
 | Field | Value |
 |---|---|
-| Range size | **150** (≥100) |
-| Keep in range | media **76** (geseedet) |
-| changedCount | 149 |
-| protectedCount | 1 |
-| SQL mismatches | **0** |
-| Undo mismatches | **0** |
-| Final restore | Ausgang = vorher (sparse) |
-| errorRate | **0** |
-| Reject / Undo | ≈8 ms / ≈6 ms |
-| Stats | before 184 990 → after reject 184 841 → after undo 184 991 (default filter) |
+| Range (API) | ≥100 mit Keep-Schutz + Undo + Restore |
+| Range (Browser) | virtualisierte Gallery, Shift-Range, **R**, Ergebnis sinkt, **Ctrl+Z**, Ergebnis restauriert |
+| DB vor Mutation | Status der berührten IDs gesichert |
+| Cleanup | finally-Restore + SQL-Verify; Cleanup-Fehler ⇒ Acceptance FAIL |
+| Physische Finalization | keine |
 | Evidence | **VERIFIED** |
-
-Kein physisches Delete; Keep-Schutz aktiv (`protectKeep`).
 
 ## Workflow E — Fokusbeziehung
 
 | Field | Value |
 |---|---|
-| Focus media | #1 |
-| Used P0 relation | **provenance** (total 1621) |
-| Gallery after | 1621 MATCH |
-| Similar | disabled / unavailable (P1) |
+| Doppelklick → Fokus | VERIFIED (Browser) |
+| P0-Relation klickbar | VERIFIED |
+| Fokus-X / Escape | VERIFIED |
+| Similar | disabled (P1) |
 | Evidence | **VERIFIED** |
-
-## Statistik-Gegenprobe
-
-| Zustand | unreviewed | keep | reject | unsure | total | Evidence |
-|---|---:|---:|---:|---:|---:|---|
-| Inventory / Ergebnis default | 184991 | 0 | 0 | 0 | 184991 | VERIFIED |
-| Nach Keep-Seed + vor Reject | 184990 | (keep aus Filter) | 0 | 0 | 184990 | VERIFIED |
-| Nach Range-Reject | 184841 | 0 | 0* | 0 | 184841 | VERIFIED |
-| Nach Undo + Keep-Reset | 184991 | 0 | 0 | 0 | 184991 | VERIFIED |
-
-\* Reject-Rows existieren in DB, erscheinen nicht im Default-Resultfilter (unreviewed+unsure). Sparse-unreviewed korrekt gezählt.
-
-## Performance (Cold/Warm, API)
-
-Datei: `docs/review-mvp/bench/frv46-performance.csv`
-
-Methodik: fresh SQLite-Connection cold-ish + warm (wie FRV-40 Klasse; **nicht** OS-disk-cold).
-
-| Metric | FRV-46 Cold p50 (run1) | FRV-40 baseline Cold p50 | Δ |
-|---|---:|---:|---|
-| gallery | 595 ms | 863 ms | besser |
-| groups_provenance | 2754 ms | 1639 ms | **>20 % langsamer** |
-| category_subtree | 370 ms | 357 ms | ≈ |
-| category_gallery | 1604 ms | 1520 ms | ≈ |
-| focus | 1343 ms | 1350 ms | ≈ |
-| facets | 1627 ms | 1520 ms | ≈ |
-| status_counts | 599 ms | 5 ms | **starke Abweichung** |
-
-**Analyse (INFERRED):** `status_counts` / teilweise Groups liegen deutlich über der FRV-40-Baseline. Mögliche Ursachen: andere Connection-Warmheit, Post-105-Index-Lage, Messpfad über `computeStatusCounts` vs. damaliger Bench. **Kein Schönrechnen** — Deviation dokumentiert. Keine Optimierung in FRV-46.
-
-## Explorer-Baseline
-
-**NOT_VERIFIED / missing**
-
-Keine gemessene Explorer-UI-Baseline in FRV-38/39/40 Docs/CSVs gefunden.
-
-Minimale manuelle Nacharbeit: gleiche Cat_Dentistry-Kategorie/Filter in Explorer vs Review, Stoppuhr für time-to-first-grid + eine Gruppenaktion, Werte in diese Datei nachtragen.
 
 ## Browser / Playwright
 
 | Item | Status |
 |---|---|
-| Stack Browser→Vite→API→Gate-DB | implementiert (`acceptance/`) |
-| Node fetch API/Proxy | VERIFIED (gallery total 184991) |
-| Chromium UI journeys | **BLOCKED** in Agent-Lauf (Requests hängen / ECONNRESET über Preview-Proxy; Direct-API CORS) |
-| Empfehlung | Visuell: `Start-FindSeriesReview.ps1 -DatabasePath C:\Temp\...\findseries-v5-phase1-gate.db -ProductionWeb` |
+| Stack | Browser → static `dist` + buffered `/api` proxy → Review API → **writable** C:-Gate-DB |
+| `REVIEW_DB_READONLY` | **0** (nötig für Range/Undo) |
+| `REVIEW_CATEGORY_LIVE_COUNTS` | **0** im Browser-Stack (1385 Roots × Live-Count würde Event-Loop stallen; Klick/Filter bleiben echte API) |
+| Produktiv- / E:-Guard | aktiv; nur `C:\Temp\FindSeries-Review-Test\…` |
+| Workflows A–E | **PASS** |
+| Teardown | API/Web-Ports frei, `.run-state.json` entfernt, Review-Status restore |
 
-Orchestrator default: `-SkipBrowser` bis Proxy/Chromium-Pfad stabil. API/SQL deckt die fünf Workflow-Semantiken ab.
+Orchestrator-Default: Browser **an** (`-SkipBrowser` nur Diagnose).
 
-## Nutzen / Durchsatz (sachlich)
+## Performance (Cold/Warm, API)
 
-| Workflow | Medien / Schritt | Reload nötig? | Undo |
+Datei: `docs/review-mvp/bench/frv46-performance.csv`
+
+Methodik: fresh SQLite-Connection cold-ish + warm (FRV-40-Klasse; **nicht** OS-disk-cold). Abweichungen vs FRV-40 sind **dokumentiert**, nicht als methodisch identische Regression behauptet.
+
+| Metric | Beobachtung |
+|---|---|
+| `groups_provenance` | >20 % langsamer vs FRV-40 Cold p50 |
+| `status_counts` | deutlich langsamer vs FRV-40 |
+| Übrige | ≈ / besser |
+
+Keine Optimierung in FRV-46. DoD erlaubt dokumentierte Perf-Abweichungen.
+
+## Explorer-Baseline
+
+**NOT_VERIFIED** — blockiert Done.
+
+### Manuelle Anleitung (≤2–3 Minuten)
+
+1. Review-Web mit derselben Gate-DB starten (Cat_Dentistry).
+2. Kategorie **14367** (`Smiling men in the United States`) wählen; time-to-first-grid notieren.
+3. Im **bisherigen Explorer** dieselbe reale Kategorie öffnen; time-to-first-grid notieren.
+4. Eine vergleichbare Aktion (z. B. Gruppen-/Listenwechsel oder einfache Review-Aktion) in beiden UIs stoppen.
+5. Werte hier eintragen:
+
+| Metric | Review Web | Explorer | Notiz |
+|---|---:|---:|---|
+| time-to-first-grid (ms) | _todo_ | _todo_ | |
+| vergleichbare Aktion (ms) | _todo_ | _todo_ | |
+
+## Nutzen / Durchsatz
+
+| Workflow | Medien / Schritt | Reload? | Undo |
 |---|---|---|---|
-| A Kategorie | 1621 im Subtree | nein | n/a |
+| A Kategorie | ~1621 | nein | n/a |
 | B Provenienz | 184991 | nein | n/a |
-| C Serie-Fallback | 184991 + Pagination | nein | n/a |
-| D Range | 150 mit Keep-Schutz | nein | ja, restore OK |
-| E Fokus | Relation 1621 | nein | Fokus-X |
+| C Fallback + Supplemental | 184991 + named series (P9) | nein | n/a |
+| D Range | ≥2 UI / ≥100 API | nein | ja |
+| E Fokus | Relation | nein | Fokus-X |
 
-**Verdict:** PASS WITH DEVIATION — korrekte reversible Review-Semantik und SQL-Matches; Datenlücken (2. Provenienztyp, named Series) und Perf-Abweichungen vs FRV-40 sowie fehlende Explorer-Baseline / Browser-Automation dokumentiert.
+**Verdict:** PASS WITH DEVIATION — reversible Review-Semantik, Browser A–E, named-series supplemental VERIFIED; Abweichungen: zweiter Provenienztyp NOT_AVAILABLE, Cat_Dentistry named-series DATA_GAP (durch Supplemental ausgeglichen), Perf-Deltas vs FRV-40, Explorer-Baseline fehlt → Status bleibt **Testing**.
 
 ## Cleanup
 
-- Review-Status Project 7 nach Acceptance: 0 Rows (VERIFIED)
+- Review-Teststatusreste: nach Lauf keine (SQL-Verify)
 - E:-Archiv unverändert
-- C:-Gate-Kopie **behalten** bis externes Review
+- C:-Gate-Kopie behalten bis externes Review
 - Keine Produktiv-DB-Berührung
 
 ## Gate / E2E / CI
 
-Nach Commit: `npm run test:gate`, `npm run test:e2e`, GitHub CI (ohne Real-DB).
+Lokal: `npm run test:gate`, `npm run test:e2e`, `npm run test:frv46` (ohne Skip).  
+GitHub CI: Gate + E2E (ohne Real-DB).

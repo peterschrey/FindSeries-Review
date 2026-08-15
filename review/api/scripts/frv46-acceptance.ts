@@ -35,7 +35,13 @@ const dbPath = path.resolve(process.env.REVIEW_PERF_DB_PATH ?? DEFAULT_GATE_DB);
 const projectId = Number(process.env.REVIEW_BENCH_PROJECT_ID ?? DEFAULT_PROJECT_ID);
 const STATUSES = ['unreviewed', 'unsure'] as const;
 
-type Evidence = 'VERIFIED' | 'REPORTED' | 'INFERRED' | 'NOT_VERIFIED';
+type Evidence =
+  | 'VERIFIED'
+  | 'REPORTED'
+  | 'INFERRED'
+  | 'NOT_VERIFIED'
+  | 'DATA_GAP'
+  | 'NOT_AVAILABLE';
 
 type Check = {
   id: string;
@@ -286,15 +292,20 @@ async function main() {
   checks.push({
     id: 'workflow_B_provenance',
     ok: Boolean(firstProv) && provDrillOk,
-    evidence: provTypes.length >= 2 ? 'VERIFIED' : 'VERIFIED',
+    evidence: 'VERIFIED',
     detail: {
       ...provDetail,
+      categoryProvenance: 'VERIFIED',
+      secondProvenanceType: provTypes.length >= 2 ? 'VERIFIED' : 'NOT_AVAILABLE',
       secondTypeAvailable: provTypes.length >= 2,
-      evidenceClass: provTypes.length >= 2 ? 'VERIFIED' : 'REPORTED',
+      note:
+        provTypes.length < 2
+          ? 'Only real category provenance on Cat_Dentistry; second provenance type NOT_AVAILABLE (not invented).'
+          : '≥2 provenance types present',
     },
   });
 
-  // --- Workflow C: series ---
+  // --- Workflow C: series (Cat_Dentistry — named series DATA_GAP; fallback only) ---
   const seriesKeyCount = (
     db.prepare(`SELECT COUNT(*) AS n FROM media_series_keys WHERE project_id=?`).get(projectId) as {
       n: number;
@@ -307,6 +318,7 @@ async function main() {
       )
       .get(projectId) as { n: number }
   ).n;
+  const namedSeriesOnMain = seriesKeyCount > 0 || seriesDisc > 0;
   const groupsSeries = timedMs(() =>
     queryGroups(db, {
       projectId,
@@ -321,7 +333,8 @@ async function main() {
     mediaSeriesKeys: seriesKeyCount,
     seriesDiscoveries: seriesDisc,
     groupsMs: Math.round(groupsSeries.ms),
-    namedSeriesAvailable: seriesKeyCount > 0 || seriesDisc > 0,
+    namedSeriesAvailable: namedSeriesOnMain,
+    namedSeriesEvidence: namedSeriesOnMain ? 'VERIFIED' : 'DATA_GAP',
   };
   if (seriesCard) {
     const drill = timedMs(() =>
@@ -348,9 +361,11 @@ async function main() {
     const overlap = ids1.filter((id) => ids2.includes(id));
     const mono = ids1.every((id, i) => i === 0 || id >= ids1[i - 1]!);
     seriesOk = drill.value.total === seriesCard.total && overlap.length === 0 && mono;
+    const isFallback = seriesCard.key === '(ohne Serie)';
     seriesDetail = {
       ...seriesDetail,
       series_key: seriesCard.key,
+      isFallbackBucket: isFallback,
       groupCardTotal: seriesCard.total,
       galleryTotal: drill.value.total,
       match: drill.value.total === seriesCard.total,
@@ -360,17 +375,131 @@ async function main() {
       pageOverlap: overlap.length,
       monotonicAsc: mono,
       queryMs: Math.round(drill.ms),
-      note:
-        seriesKeyCount === 0 && seriesDisc === 0
-          ? 'No named series_key / filename-series in Cat_Dentistry; exercised fallback bucket (typically ohne Serie) with pagination.'
-          : 'Named series present',
+      note: namedSeriesOnMain
+        ? 'Named series present on Cat_Dentistry'
+        : 'Cat_Dentistry has no named series; fallback "(ohne Serie)" exercised — NOT a full series verification.',
     };
   }
   checks.push({
     id: 'workflow_C_series',
     ok: seriesOk,
-    evidence: seriesKeyCount > 0 || seriesDisc > 0 ? 'VERIFIED' : 'VERIFIED',
+    // Fallback alone must not claim full named-series verification
+    evidence: namedSeriesOnMain ? 'VERIFIED' : 'DATA_GAP',
     detail: seriesDetail,
+  });
+
+  // --- Supplemental: named series on same C: gate DB (project 9 Dental_Context_Search) ---
+  const SERIES_SUPPLEMENT_PROJECT = 9;
+  const SERIES_SUPPLEMENT_KEY = '02866_New_Luce_Church_of_Scotland,_New_Luce_';
+  const suppDisc = (
+    db
+      .prepare(
+        `SELECT COUNT(DISTINCT media_id) AS n FROM discoveries
+         WHERE project_id=? AND source_type='filename-series'
+           AND COALESCE(source_value, query_text)=?`,
+      )
+      .get(SERIES_SUPPLEMENT_PROJECT, SERIES_SUPPLEMENT_KEY) as { n: number }
+  ).n;
+  let suppOk = false;
+  let suppDetail: Record<string, unknown> = {
+    projectId: SERIES_SUPPLEMENT_PROJECT,
+    projectName: 'Dental_Context_Search',
+    seriesKey: SERIES_SUPPLEMENT_KEY,
+    sqlDistinctMedia: suppDisc,
+    sameDbCopy: dbPath,
+    invented: false,
+  };
+  if (suppDisc >= 2) {
+    const groupsSupp = timedMs(() =>
+      queryGroups(db, {
+        projectId: SERIES_SUPPLEMENT_PROJECT,
+        groupBy: 'series',
+        statuses: [...STATUSES],
+        limit: 80,
+      }),
+    );
+    const namedCard =
+      groupsSupp.value.groups.find((g) => g.key === SERIES_SUPPLEMENT_KEY) ??
+      groupsSupp.value.groups.find((g) => g.key !== '(ohne Serie)');
+    if (namedCard && namedCard.key !== '(ohne Serie)') {
+      const drill = timedMs(() =>
+        queryGallery(db, {
+          projectId: SERIES_SUPPLEMENT_PROJECT,
+          statuses: [...STATUSES],
+          seriesKey: namedCard.key,
+          limit: 5,
+          sort: 'media_id',
+          dir: 'asc',
+        }),
+      );
+      const page2 = queryGallery(db, {
+        projectId: SERIES_SUPPLEMENT_PROJECT,
+        statuses: [...STATUSES],
+        seriesKey: namedCard.key,
+        limit: 5,
+        sort: 'media_id',
+        dir: 'asc',
+        cursor: drill.value.nextCursor ?? undefined,
+      });
+      const ids1 = drill.value.items.map((i) => i.mediaId);
+      const ids2 = page2.items.map((i) => i.mediaId);
+      const hasNext = Boolean(drill.value.nextCursor);
+      const overlap = hasNext ? ids1.filter((id) => ids2.includes(id)) : [];
+      const mono = ids1.every((id, i) => i === 0 || id >= ids1[i - 1]!);
+      const focusMediaId = ids1[0];
+      let focusSeries: Record<string, unknown> | null = null;
+      if (focusMediaId != null) {
+        const focus = queryFocus(db, {
+          projectId: SERIES_SUPPLEMENT_PROJECT,
+          focusMediaId,
+          baseFilter: { projectId: SERIES_SUPPLEMENT_PROJECT, statuses: [...STATUSES] },
+        });
+        const srel = focus.relations.find((r) => r.kind === 'series');
+        focusSeries = srel
+          ? { available: srel.available, total: srel.total, note: srel.note }
+          : { available: false };
+      }
+      suppOk =
+        namedCard.key === SERIES_SUPPLEMENT_KEY &&
+        drill.value.total === namedCard.total &&
+        hasNext &&
+        overlap.length === 0 &&
+        mono &&
+        namedCard.total >= 2;
+      suppDetail = {
+        ...suppDetail,
+        groupCardKey: namedCard.key,
+        groupCardTotal: namedCard.total,
+        galleryTotal: drill.value.total,
+        sqlDistinctMediaRaw: suppDisc,
+        apiUiCountMatch: drill.value.total === namedCard.total,
+        paginationApplicable: hasNext,
+        page1Ids: ids1,
+        page2FirstIds: ids2.slice(0, 3),
+        pageOverlap: overlap.length,
+        monotonicAsc: mono,
+        groupsMs: Math.round(groupsSupp.ms),
+        queryMs: Math.round(drill.ms),
+        focusSeriesRelation: focusSeries,
+        note: 'Real named filename-series on same C: gate copy; Cat_Dentistry remains primary FRV-46 project.',
+      };
+    } else {
+      suppDetail = {
+        ...suppDetail,
+        note: 'SQL found filename-series rows but GroupCard for named key missing in groups response',
+      };
+    }
+  } else {
+    suppDetail = {
+      ...suppDetail,
+      note: 'No multi-media named filename-series found on gate DB for supplemental test',
+    };
+  }
+  checks.push({
+    id: 'workflow_C_series_supplemental',
+    ok: suppOk,
+    evidence: suppOk ? 'VERIFIED' : 'DATA_GAP',
+    detail: suppDetail,
   });
 
   // --- Stats baselines A/B ---
@@ -654,10 +783,12 @@ async function main() {
     },
     verdict:
       failed.length === 0
-        ? provTypes.length < 2 || (seriesKeyCount === 0 && seriesDisc === 0)
+        ? provTypes.length < 2 || !namedSeriesOnMain || !suppOk
           ? 'PASS WITH DEVIATION'
           : 'PASS'
         : 'BLOCKED',
+    seriesDataGapOnCatDentistry: !namedSeriesOnMain,
+    seriesSupplementalVerified: suppOk,
   };
 
   const report = {
@@ -679,10 +810,18 @@ async function main() {
     throughput,
     explorerBaseline: {
       status: 'NOT_VERIFIED',
-      note: 'No measured Explorer UI baseline found in FRV-38/39/40 docs/CSVs/Notion artifacts. Manual side-by-side timing still required.',
+      note: 'Manual 2–3 min Explorer side-by-side still required (see FRV46_REAL_DB_ACCEPTANCE.md § Explorer). Blocks Done.',
+      manualSteps: [
+        'Open same Cat_Dentistry category in legacy Explorer',
+        'Measure time-to-first-grid',
+        'Measure one comparable navigation/review action',
+        'Record values in FRV46_REAL_DB_ACCEPTANCE.md',
+      ],
     },
     frv40BaselinePath: path.join(benchDocDir, 'frv40-results.baseline.csv'),
-    perfNote: 'API fresh-connection cold-ish + warm; same methodology class as FRV-40 (not OS disk-cold).',
+    perfNote:
+      'API fresh-connection cold-ish + warm; same methodology class as FRV-40 (not OS disk-cold). Deviations vs FRV-40 are documented, not claimed as methodologically identical regressions.',
+    notionStatusRecommendation: 'Testing',
   };
 
   const jsonPath = path.join(benchDocDir, 'frv46-acceptance.json');

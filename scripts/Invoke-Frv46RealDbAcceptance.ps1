@@ -6,12 +6,12 @@
   - Refuses productive DB
   - Expects C:\Temp\FindSeries-Review-Test\findseries-v5-phase1-gate.db
   - Ensures review migrations 100–105
-  - Runs API/SQL acceptance + optional Playwright UI acceptance
-  - Does NOT register in GitHub CI
+  - Runs API/SQL acceptance + Browser/Playwright acceptance (default)
+  - Does NOT register Real-DB in GitHub CI
 
 .EXAMPLE
   .\scripts\Invoke-Frv46RealDbAcceptance.ps1
-  .\scripts\Invoke-Frv46RealDbAcceptance.ps1 -SkipBrowser
+  .\scripts\Invoke-Frv46RealDbAcceptance.ps1 -SkipBrowser   # diagnosis only
 #>
 [CmdletBinding()]
 param(
@@ -19,17 +19,16 @@ param(
     [switch]$SkipBrowser,
     [switch]$SkipMigrate
 )
-# Browser Playwright against 185k gate via Vite preview is flaky in agent environments
-# (proxy hang / ECONNRESET). Default skip; pass -SkipBrowser:$false to attempt.
-if (-not $PSBoundParameters.ContainsKey('SkipBrowser')) {
-    $SkipBrowser = $true
-}
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $production = [IO.Path]::GetFullPath('C:\FindSeriesV5-Workspace\findseries-v5.db')
 $target = [IO.Path]::GetFullPath($DatabasePath)
 if ($target.ToLowerInvariant() -eq $production.ToLowerInvariant()) {
     throw "REFUSING productive database: $DatabasePath"
+}
+$allowedRoot = [IO.Path]::GetFullPath('C:\Temp\FindSeries-Review-Test')
+if (-not $target.ToLowerInvariant().StartsWith($allowedRoot.ToLowerInvariant())) {
+    throw "FRV-46 DB must live under $allowedRoot (got $DatabasePath)"
 }
 if (-not (Test-Path -LiteralPath $DatabasePath)) {
     throw @"
@@ -60,7 +59,9 @@ try {
     Pop-Location
 }
 
-if (-not $SkipBrowser) {
+if ($SkipBrowser) {
+    Write-Host '=== Browser acceptance SKIPPED (-SkipBrowser) ===' -ForegroundColor Yellow
+} else {
     Push-Location (Join-Path $root 'review\web')
     try {
         if (-not (Test-Path 'dist\index.html')) { npm run build }

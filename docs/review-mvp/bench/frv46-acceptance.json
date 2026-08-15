@@ -1,7 +1,7 @@
 {
   "task": "FRV-46",
-  "started": "2026-08-15T12:54:27.805Z",
-  "finished": "2026-08-15T12:57:46.993Z",
+  "started": "2026-08-15T14:42:44.829Z",
+  "finished": "2026-08-15T14:46:14.861Z",
   "dbPath": "C:\\Temp\\FindSeries-Review-Test\\findseries-v5-phase1-gate.db",
   "dbBytes": 20381200384,
   "provenanceCopy": {
@@ -57,8 +57,8 @@
           26776
         ],
         "sampleMembershipOk": true,
-        "queryMs": 1573,
-        "subtreeCountMs": 429,
+        "queryMs": 1688,
+        "subtreeCountMs": 416,
         "subtreeCountApi": 1621
       }
     },
@@ -74,7 +74,7 @@
             "n": 184991
           }
         ],
-        "groupsMs": 2716,
+        "groupsMs": 2789,
         "groupKey": "category:category",
         "groupCardTotal": 184991,
         "galleryTotal": 184991,
@@ -83,21 +83,24 @@
         "matchGroupToGallery": true,
         "matchGalleryToStatusCounts": true,
         "multiProvenanceSamples": [],
-        "note": "Cat_Dentistry gate copy exposes only category provenance discoveries; second type NOT present (NOT invented).",
-        "secondTypeAvailable": false,
-        "evidenceClass": "REPORTED"
+        "note": "Only real category provenance on Cat_Dentistry; second provenance type NOT_AVAILABLE (not invented).",
+        "categoryProvenance": "VERIFIED",
+        "secondProvenanceType": "NOT_AVAILABLE",
+        "secondTypeAvailable": false
       }
     },
     {
       "id": "workflow_C_series",
       "ok": true,
-      "evidence": "VERIFIED",
+      "evidence": "DATA_GAP",
       "detail": {
         "mediaSeriesKeys": 0,
         "seriesDiscoveries": 0,
-        "groupsMs": 2480,
+        "groupsMs": 2550,
         "namedSeriesAvailable": false,
+        "namedSeriesEvidence": "DATA_GAP",
         "series_key": "(ohne Serie)",
+        "isFallbackBucket": true,
         "groupCardTotal": 184991,
         "galleryTotal": 184991,
         "match": true,
@@ -120,8 +123,48 @@
         ],
         "pageOverlap": 0,
         "monotonicAsc": true,
-        "queryMs": 1426,
-        "note": "No named series_key / filename-series in Cat_Dentistry; exercised fallback bucket (typically ohne Serie) with pagination."
+        "queryMs": 1530,
+        "note": "Cat_Dentistry has no named series; fallback \"(ohne Serie)\" exercised — NOT a full series verification."
+      }
+    },
+    {
+      "id": "workflow_C_series_supplemental",
+      "ok": true,
+      "evidence": "VERIFIED",
+      "detail": {
+        "projectId": 9,
+        "projectName": "Dental_Context_Search",
+        "seriesKey": "02866_New_Luce_Church_of_Scotland,_New_Luce_",
+        "sqlDistinctMedia": 16,
+        "sameDbCopy": "C:\\Temp\\FindSeries-Review-Test\\findseries-v5-phase1-gate.db",
+        "invented": false,
+        "groupCardKey": "02866_New_Luce_Church_of_Scotland,_New_Luce_",
+        "groupCardTotal": 16,
+        "galleryTotal": 16,
+        "sqlDistinctMediaRaw": 16,
+        "apiUiCountMatch": true,
+        "paginationApplicable": true,
+        "page1Ids": [
+          115250,
+          115258,
+          115259,
+          115260,
+          115271
+        ],
+        "page2FirstIds": [
+          115272,
+          115273,
+          115274
+        ],
+        "pageOverlap": 0,
+        "monotonicAsc": true,
+        "groupsMs": 812,
+        "queryMs": 87,
+        "focusSeriesRelation": {
+          "available": true,
+          "total": 15
+        },
+        "note": "Real named filename-series on same C: gate copy; Cat_Dentistry remains primary FRV-46 project."
       }
     },
     {
@@ -162,7 +205,7 @@
         "undoRestoredOk": true,
         "restoreMismatch": 0,
         "errorRate": 0,
-        "rejectMs": 8,
+        "rejectMs": 10,
         "undoMs": 6,
         "resetKeepChanged": 1,
         "statsBefore": {
@@ -232,14 +275,14 @@
             "note": "category"
           }
         ],
-        "focusMs": 2164,
+        "focusMs": 2507,
         "usedRelation": "provenance",
         "relationTotal": 1621,
         "galleryAfter": 1621,
         "galleryBeforeWithCategory": 1621,
         "match": true,
         "similarDisabled": true,
-        "queryMs": 1837
+        "queryMs": 1838
       }
     }
   ],
@@ -256,12 +299,36 @@
       "D": "click + shift range + R + Ctrl+Z",
       "E": "dblclick focus + relation + X"
     },
-    "verdict": "PASS WITH DEVIATION"
+    "verdict": "PASS WITH DEVIATION",
+    "seriesDataGapOnCatDentistry": true,
+    "seriesSupplementalVerified": true
   },
   "explorerBaseline": {
     "status": "NOT_VERIFIED",
-    "note": "No measured Explorer UI baseline found in FRV-38/39/40 docs/CSVs/Notion artifacts. Manual side-by-side timing still required."
+    "note": "Manual 2–3 min Explorer side-by-side still required (see FRV46_REAL_DB_ACCEPTANCE.md § Explorer). Blocks Done.",
+    "manualSteps": [
+      "Open same Cat_Dentistry category in legacy Explorer",
+      "Measure time-to-first-grid",
+      "Measure one comparable navigation/review action",
+      "Record values in FRV46_REAL_DB_ACCEPTANCE.md"
+    ]
   },
   "frv40BaselinePath": "C:\\Users\\pschr\\cursor3-repos\\FindSeries-Review\\docs\\review-mvp\\bench\\frv40-results.baseline.csv",
-  "perfNote": "API fresh-connection cold-ish + warm; same methodology class as FRV-40 (not OS disk-cold)."
+  "perfNote": "API fresh-connection cold-ish + warm; same methodology class as FRV-40 (not OS disk-cold). Deviations vs FRV-40 are documented, not claimed as methodologically identical regressions.",
+  "notionStatusRecommendation": "Testing",
+  "browserAcceptance": {
+    "status": "PASS",
+    "evidence": "VERIFIED",
+    "workflows": [
+      "A",
+      "B",
+      "C_fallback",
+      "C_supplemental_named_series",
+      "D_range_undo",
+      "E_focus"
+    ],
+    "stack": "static dist + buffered /api proxy + writable C: gate DB",
+    "skipBrowserDefault": false,
+    "categoryLiveCounts": "REVIEW_CATEGORY_LIVE_COUNTS=0 (acceptance harness; UI click/filter still real API)"
+  }
 }

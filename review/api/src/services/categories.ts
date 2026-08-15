@@ -54,7 +54,10 @@ export function listCategoryNodes(db: ReviewDb, q: CategoryNodeQuery): CategoryN
 
   return nodes.map((r) => {
     let mediaCount: number | undefined;
-    if (q.filter) {
+    // FRV-46 / large Real-DB: live per-node counts on 1000+ roots stall the API event loop.
+    // Opt out via REVIEW_CATEGORY_LIVE_COUNTS=0 (acceptance harness); default remains live.
+    const liveCounts = process.env.REVIEW_CATEGORY_LIVE_COUNTS !== '0';
+    if (q.filter && liveCounts) {
       const filter: MediaFilter = {
         projectId: q.projectId,
         statuses: q.filter.statuses ?? ['unreviewed', 'unsure'],
@@ -73,6 +76,8 @@ export function listCategoryNodes(db: ReviewDb, q: CategoryNodeQuery): CategoryN
         .prepare(`WITH fm AS (${base.sql}) SELECT COUNT(*) AS c FROM fm`)
         .get(...base.params) as { c: number };
       mediaCount = Number(cnt.c);
+    } else if (q.filter && !liveCounts) {
+      mediaCount = r.member_count == null ? undefined : Number(r.member_count);
     }
     return {
       categoryId: r.category_id,

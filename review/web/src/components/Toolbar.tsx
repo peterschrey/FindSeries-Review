@@ -44,6 +44,7 @@ export function Toolbar({
       <select
         className="select"
         value={state.projectId}
+        data-testid="project-select"
         onChange={(e) =>
           dispatch({ type: 'set_project', projectId: Number(e.target.value) })
         }
