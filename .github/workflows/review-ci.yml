@@ -109,3 +109,72 @@ jobs:
 
       - name: Optional migration smoke (tiny fixture copy)
         run: ./scripts/Invoke-ReviewMigrationSmoke.ps1
+
+  review-e2e:
+    name: Review E2E (FRV-43)
+    runs-on: windows-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            review/shared/package-lock.json
+            review/api/package-lock.json
+            review/web/package-lock.json
+
+      - name: Verify bundled sqlite3.exe
+        run: |
+          if (-not (Test-Path 'Tools/sqlite3.exe')) {
+            throw 'Tools/sqlite3.exe missing'
+          }
+
+      - name: Install shared
+        working-directory: review/shared
+        run: npm ci
+
+      - name: Build shared
+        working-directory: review/shared
+        run: npm run build
+
+      - name: Install api
+        working-directory: review/api
+        run: npm ci
+
+      - name: Build api
+        working-directory: review/api
+        run: npm run build
+
+      - name: Install web
+        working-directory: review/web
+        run: npm ci
+
+      - name: Build web
+        working-directory: review/web
+        run: npm run build
+
+      - name: Install Playwright Chromium
+        working-directory: review/web
+        run: npx playwright install chromium
+
+      - name: Run headless E2E journeys
+        working-directory: review/web
+        run: npm run test:e2e
+
+      - name: Upload E2E artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frv43-e2e-artifacts
+          path: |
+            review/web/e2e-results/
+            review/web/e2e-report/
+          if-no-files-found: ignore

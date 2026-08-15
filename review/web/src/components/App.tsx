@@ -256,11 +256,11 @@ export function App() {
           Session {sessionId.slice(0, 8)}…
         </span>
         <div className="topstats">
-          <span className="stat">
+          <span className="stat" data-testid="header-result">
             <span className="dot" style={{ background: 'var(--accent)' }} />
             Ergebnis {gallery.total.toLocaleString('de-DE')}
           </span>
-          <span className="stat">
+          <span className="stat" data-testid="header-selection">
             Auswahl {state.selectedIds.length}
             {state.focusMediaId != null ? ` · Fokus #${state.focusMediaId}` : ''}
           </span>

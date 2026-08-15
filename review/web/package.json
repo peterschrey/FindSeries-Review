@@ -9,7 +9,9 @@
     "typecheck": "tsc --noEmit",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:e2e": "node ./e2e/ensure-preview-build.mjs && playwright test",
+    "test:e2e:headed": "node ./e2e/ensure-preview-build.mjs && playwright test --headed"
   },
   "dependencies": {
     "@findseries/review-shared": "file:../shared",
@@ -18,6 +20,7 @@
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.2.0",
     "@types/react": "^19.0.10",

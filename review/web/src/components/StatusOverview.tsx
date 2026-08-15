@@ -36,16 +36,18 @@ function Card({
   title,
   total,
   counts,
+  testId,
 }: {
   title: string;
   total: number;
   counts: StatusCounts;
+  testId: string;
 }) {
   return (
-    <div className="summaryCard">
+    <div className="summaryCard" data-testid={`summary-${testId}`}>
       <h3>{title}</h3>
       <div className="summaryTop">
-        <strong>{total.toLocaleString('de-DE')} Medien</strong>
+        <strong data-testid={`summary-${testId}-total`}>{total.toLocaleString('de-DE')} Medien</strong>
       </div>
       <Bar counts={counts} />
       <div className="legend">
@@ -81,9 +83,9 @@ export function StatusOverview({
 }) {
   return (
     <div className="overview">
-      <Card title="Gesamtbestand" total={inventory.total} counts={inventory} />
-      <Card title="Ergebnismenge" total={result.total} counts={result} />
-      <Card title="Auswahl" total={selection.total} counts={selection} />
+      <Card title="Gesamtbestand" testId="inventory" total={inventory.total} counts={inventory} />
+      <Card title="Ergebnismenge" testId="result" total={result.total} counts={result} />
+      <Card title="Auswahl" testId="selection" total={selection.total} counts={selection} />
     </div>
   );
 }

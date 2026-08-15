@@ -114,7 +114,9 @@ export function Gallery({
   return (
     <div className="center">
       <div className="breadcrumbs">
-        <span className="crumb">Ergebnis: {gallery.total.toLocaleString('de-DE')}</span>
+        <span className="crumb" data-testid="result-total">
+          Ergebnis: {gallery.total.toLocaleString('de-DE')}
+        </span>
         {state.q.trim() && (
           <span className="crumb">
             Suche: {state.q}
@@ -181,6 +183,10 @@ export function Gallery({
                       type="button"
                       className={`thumb ${item.reviewStatus} ${sel ? 'sel' : ''}`}
                       style={{ position: 'relative', width: CELL, height: CELL - 8 }}
+                      data-testid={`thumb-${item.mediaId}`}
+                      data-media-id={item.mediaId}
+                      aria-label={`Medium ${item.mediaId}`}
+                      aria-pressed={sel}
                       onClick={(e) => onThumbClick(e, item.mediaId)}
                       onDoubleClick={() => onThumbDblClick(item.mediaId)}
                     >

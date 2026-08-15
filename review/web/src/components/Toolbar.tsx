@@ -71,6 +71,8 @@ export function Toolbar({
           key={c.status}
           type="button"
           className={`chip ${statusChipActive(state, c.status) ? 'active' : ''}`}
+          data-testid={`status-chip-${c.status}`}
+          aria-pressed={statusChipActive(state, c.status)}
           onClick={() => dispatch({ type: 'toggle_status', status: c.status })}
         >
           <span className="dot" style={{ background: c.color }} />
@@ -81,6 +83,8 @@ export function Toolbar({
       <select
         className="select"
         value={state.groupBy}
+        aria-label="Gruppieren"
+        data-testid="group-by"
         onChange={(e) =>
           dispatch({ type: 'set_group_by', groupBy: e.target.value as GroupBy })
         }

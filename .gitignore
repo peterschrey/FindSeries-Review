@@ -38,3 +38,10 @@ build/
 # Local analysis copies
 tmp/
 *.bak
+
+# FRV-43 Playwright artifacts
+review/web/e2e/.run-state.json
+review/web/e2e-results/
+review/web/e2e-report/
+review/web/test-results/
+review/web/playwright-report/

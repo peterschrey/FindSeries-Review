@@ -157,6 +157,8 @@ export function LeftNav({
           <button
             type="button"
             className={`facet ${selected ? 'active' : ''}`}
+            data-testid={`category-${node.categoryId}`}
+            aria-pressed={Boolean(selected)}
             onClick={(e) => toggleCategory(node.categoryId, e.ctrlKey || e.metaKey)}
           >
             <span>{node.title}</span>

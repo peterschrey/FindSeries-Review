@@ -181,6 +181,7 @@ export function GroupShelf({
                 type="button"
                 className={`shelfCard relationCard ${active ? 'active' : ''} ${!clickable ? 'disabled' : ''}`}
                 disabled={!clickable}
+                data-testid={`focus-relation-${rel.kind}`}
                 title={rel.note ?? rel.kind}
                 onClick={() => {
                   if (!clickable) return;
@@ -216,6 +217,8 @@ export function GroupShelf({
               key={g.key}
               type="button"
               className={`shelfCard ${active ? 'active' : ''}`}
+              data-testid={`group-card-${g.key}`}
+              aria-pressed={active}
               onClick={() =>
                 dispatch({
                   type: 'set_drilldown',
