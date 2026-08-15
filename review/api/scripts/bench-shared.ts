@@ -29,15 +29,24 @@ export const DEFAULT_PERF_DB =
 /** @deprecated Alias for DEFAULT_PERF_DB (FRV-38/39/40 benches). */
 export const DEFAULT_GATE_DB = DEFAULT_PERF_DB;
 
-/** Prefer C:/Temp write copy; fall back to E: if present (large ~19GB). */
-export const DEFAULT_WRITE_DB = (() => {
-  if (process.env.REVIEW_WRITE_DB_PATH) return process.env.REVIEW_WRITE_DB_PATH;
-  const c = 'C:/Temp/FindSeries-Review-Test/bench-write-copy.db';
-  const e = 'E:/Temp/FindSeries-Review-Test/bench-write-copy.db';
-  if (fs.existsSync(c)) return c;
-  if (fs.existsSync(e)) return e;
-  return c;
-})();
+/** Prefer C:/Temp write copy only — never fall back to E: for SQLite writes. */
+export const DEFAULT_WRITE_DB =
+  process.env.REVIEW_WRITE_DB_PATH ?? 'C:/Temp/FindSeries-Review-Test/bench-write-copy.db';
+
+export const PRODUCTION_DB = 'C:/FindSeriesV5-Workspace/findseries-v5.db';
+
+/** Refuse productive DB and any E: path for FRV-40 bench DBs. */
+export function assertSafeBenchDb(dbPath: string): string {
+  const resolved = path.resolve(dbPath);
+  const lower = resolved.toLowerCase();
+  if (lower === path.resolve(PRODUCTION_DB).toLowerCase()) {
+    throw new Error(`REFUSING productive DB: ${resolved}`);
+  }
+  if (/^[eE]:[\\/]/.test(resolved)) {
+    throw new Error(`REFUSING E: path for FRV-40 bench DB: ${resolved}`);
+  }
+  return resolved;
+}
 
 export const DEFAULT_PROJECT_ID = Number(process.env.REVIEW_BENCH_PROJECT_ID ?? 7);
 

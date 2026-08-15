@@ -10,6 +10,9 @@
     "test:launcher-smoke": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/Invoke-Frv45LauncherSmoke.ps1",
     "test:e2e": "npm --prefix review/web run test:e2e",
     "test:e2e:headed": "npm --prefix review/web run test:e2e:headed",
-    "test:frv46": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/Invoke-Frv46RealDbAcceptance.ps1"
+    "test:frv46": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/Invoke-Frv46RealDbAcceptance.ps1",
+    "bench:frv40": "npm --prefix review/api run bench:frv40",
+    "bench:frv40:browser": "npm --prefix review/api run build && npm --prefix review/web run build && npm --prefix review/api run bench:frv40:browser",
+    "test:perf:frv40": "npm run bench:frv40 && npm run bench:frv40:browser"
   }
 }
