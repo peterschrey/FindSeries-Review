@@ -28,6 +28,26 @@ Assert ($pidPath -match 'findseries-review\.pid$') 'pid file path ends with find
 $sum0 = Get-PortOccupantSummary -Port 1
 Assert ($null -ne $sum0) 'port occupant summary returns'
 
+$free = Find-FreeTcpPort
+Assert ($free -gt 0) "Find-FreeTcpPort returned $free"
+
+# Process identity: current process matches itself; wrong creation time does not
+$self = Get-ProcessIdentity -ProcessId $PID
+Assert ($null -ne $self) 'Get-ProcessIdentity for current process'
+Assert (Test-ProcessIdentityMatch -Expected $self -ProcessId $PID) 'identity matches self'
+$wrong = [ordered]@{
+    pid = $PID
+    processName = $self.processName
+    creationTimeUtc = '1990-01-01T00:00:00.0000000Z'
+    commandLine = $self.commandLine
+}
+Assert (-not (Test-ProcessIdentityMatch -Expected $wrong -ProcessId $PID)) 'identity rejects wrong creationTime'
+Assert (-not (Test-ProcessIdentityMatch -Expected $null -ProcessId $PID)) 'identity rejects null expected'
+
+# Legacy state without tracked[] yields no alive PIDs (PID-alone unsafe)
+$legacy = [pscustomobject]@{ apiPid = $PID; webPid = $PID }
+Assert ((@(Get-AliveSessionPids -State $legacy)).Count -eq 0) 'legacy pid file without tracked is not treated as alive session'
+
 if ($fails -gt 0) {
     Write-Host "FAIL Review launcher helpers ($fails)" -ForegroundColor Red
     exit 1

@@ -277,6 +277,8 @@ if ($usePreview) {
 
 $webCommand = @"
 Set-Location -LiteralPath '$webDir'
+`$env:REVIEW_API_PORT='$ApiPort'
+`$env:REVIEW_API_HOST='$($env:REVIEW_API_HOST)'
 $webInner *>> '$webLog'
 "@
 
@@ -299,6 +301,36 @@ $webNodePids = @(Get-ChildNodePids -ParentPid $webProc.Id)
 $apiTrack = if ($apiNodePids.Count) { $apiNodePids[0] } else { $apiProc.Id }
 $webTrack = if ($webNodePids.Count) { $webNodePids[0] } else { $webProc.Id }
 
+$tracked = @()
+foreach ($pair in @(
+        @{ role = 'apiShell'; pid = $apiProc.Id },
+        @{ role = 'webShell'; pid = $webProc.Id },
+        @{ role = 'api'; pid = $apiTrack },
+        @{ role = 'web'; pid = $webTrack }
+    )) {
+    $ident = Get-ProcessIdentity -ProcessId ([int]$pair.pid)
+    if ($ident) {
+        $ident['role'] = $pair.role
+        $tracked += [pscustomobject]$ident
+    }
+}
+foreach ($nPid in $apiNodePids) {
+    if ($nPid -eq $apiTrack) { continue }
+    $ident = Get-ProcessIdentity -ProcessId ([int]$nPid)
+    if ($ident) {
+        $ident['role'] = 'apiNode'
+        $tracked += [pscustomobject]$ident
+    }
+}
+foreach ($nPid in $webNodePids) {
+    if ($nPid -eq $webTrack) { continue }
+    $ident = Get-ProcessIdentity -ProcessId ([int]$nPid)
+    if ($ident) {
+        $ident['role'] = 'webNode'
+        $tracked += [pscustomobject]$ident
+    }
+}
+
 $pidPayload = [ordered]@{
     startedAt     = (Get-Date).ToUniversalTime().ToString('o')
     databasePath  = $DatabasePath
@@ -310,16 +342,18 @@ $pidPayload = [ordered]@{
     webPid        = $webTrack
     apiNodePids   = @($apiNodePids)
     webNodePids   = @($webNodePids)
+    tracked       = @($tracked)
     apiLog        = $apiLog
     webLog        = $webLog
     mode          = $(if ($usePreview) { 'production-preview' } else { 'dev' })
 }
-$pidPayload | ConvertTo-Json | Set-Content -LiteralPath $pidFile -Encoding UTF8
+$pidPayload | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $pidFile -Encoding UTF8
 
-# --- readiness ---
+# --- readiness: direct API + web root + web proxy /api ---
 $deadline = (Get-Date).AddSeconds(45)
 $apiReady = $false
 $webReady = $false
+$proxyReady = $false
 while ((Get-Date) -lt $deadline) {
     if (-not $apiReady) {
         try {
@@ -333,13 +367,20 @@ while ((Get-Date) -lt $deadline) {
             if ($r.StatusCode -ge 200 -and $r.StatusCode -lt 500) { $webReady = $true }
         } catch { }
     }
-    if ($apiReady -and $webReady) { break }
+    if (-not $proxyReady) {
+        try {
+            $r = Invoke-WebRequest -Uri "http://127.0.0.1:$WebPort/api/projects" -UseBasicParsing -TimeoutSec 2
+            if ($r.StatusCode -ge 200 -and $r.StatusCode -lt 500) { $proxyReady = $true }
+        } catch { }
+    }
+    if ($apiReady -and $webReady -and $proxyReady) { break }
     Start-Sleep -Milliseconds 500
 }
 
-if (-not $apiReady -or -not $webReady) {
+if (-not $apiReady -or -not $webReady -or -not $proxyReady) {
     if (-not $apiReady) { Write-Fail "API did not become ready on port $ApiPort. See log: $apiLog" }
     if (-not $webReady) { Write-Fail "Web did not become ready on port $WebPort. See log: $webLog" }
+    if (-not $proxyReady) { Write-Fail "Web proxy /api/projects did not become ready (REVIEW_API_PORT=$ApiPort). See log: $webLog" }
     Write-Info "Cleaning up partial start..."
     Invoke-SessionCleanup -PidFilePath $pidFile
     [void](Stop-ReviewOrphanListeners -RepoRoot $RepoRoot -ApiPort $ApiPort -WebPort $WebPort)
@@ -348,6 +389,7 @@ if (-not $apiReady -or -not $webReady) {
 
 Write-Ok "API ready: http://127.0.0.1:$ApiPort"
 Write-Ok "Web ready: http://127.0.0.1:$WebPort"
+Write-Ok "Web proxy ready: http://127.0.0.1:$WebPort/api/projects -> API $ApiPort"
 Write-Ok "PID file: $pidFile"
 Write-Ok "Logs: $apiLog | $webLog"
 

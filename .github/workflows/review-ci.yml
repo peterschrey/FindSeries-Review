@@ -104,5 +104,8 @@ jobs:
         working-directory: review/web
         run: npm run build
 
+      - name: Review launcher helper tests
+        run: ./scripts/Test-ReviewLauncherHelpers.ps1
+
       - name: Optional migration smoke (tiny fixture copy)
         run: ./scripts/Invoke-ReviewMigrationSmoke.ps1

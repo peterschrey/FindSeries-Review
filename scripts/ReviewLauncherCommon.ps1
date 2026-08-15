@@ -46,6 +46,16 @@ function Test-IsProductionDbPath {
     return $full -eq (Get-ProductionDbPath).ToLowerInvariant()
 }
 
+function Find-FreeTcpPort {
+    $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
+    $listener.Start()
+    try {
+        return ([System.Net.IPEndPoint]$listener.LocalEndpoint).Port
+    } finally {
+        $listener.Stop()
+    }
+}
+
 function Get-PortListeners {
     param([int]$Port)
     try {
@@ -114,6 +124,82 @@ function Get-ChildNodePids {
     return @($found | Select-Object -Unique)
 }
 
+function Get-ProcessIdentity {
+    param([int]$ProcessId)
+    if ($ProcessId -le 0) { return $null }
+    $proc = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
+    if (-not $proc) { return $null }
+    $cim = Get-CimInstance Win32_Process -Filter "ProcessId=$ProcessId" -ErrorAction SilentlyContinue
+    $startUtc = $null
+    try {
+        if ($proc.StartTime) {
+            $startUtc = $proc.StartTime.ToUniversalTime().ToString('o')
+        }
+    } catch { }
+    return [ordered]@{
+        pid              = $ProcessId
+        processName      = $proc.ProcessName
+        creationTimeUtc  = $startUtc
+        commandLine      = $(if ($cim) { $cim.CommandLine } else { $null })
+    }
+}
+
+function Test-ProcessIdentityMatch {
+    param(
+        $Expected,
+        [int]$ProcessId
+    )
+    if (-not $Expected) { return $false }
+    $expectedPid = 0
+    try { $expectedPid = [int]$Expected.pid } catch { return $false }
+    if ($expectedPid -le 0 -or $ProcessId -ne $expectedPid) { return $false }
+
+    $live = Get-ProcessIdentity -ProcessId $ProcessId
+    if (-not $live) { return $false }
+
+    $expName = [string]$Expected.processName
+    $liveName = [string]$live.processName
+    if ($expName -and $liveName -and ($expName -ne $liveName)) { return $false }
+
+    $expCreated = [string]$Expected.creationTimeUtc
+    $liveCreated = [string]$live.creationTimeUtc
+    if ([string]::IsNullOrWhiteSpace($expCreated) -or [string]::IsNullOrWhiteSpace($liveCreated)) {
+        # Without a creation timestamp we cannot prove identity — refuse match.
+        return $false
+    }
+    try {
+        $expDt = [DateTimeOffset]::Parse($expCreated).UtcDateTime
+        $liveDt = [DateTimeOffset]::Parse($liveCreated).UtcDateTime
+        # Allow tiny clock/rounding skew (1s).
+        if ([Math]::Abs(($expDt - $liveDt).TotalSeconds) -gt 1) { return $false }
+    } catch {
+        return $false
+    }
+
+    $expCmd = [string]$Expected.commandLine
+    $liveCmd = [string]$live.commandLine
+    if (-not [string]::IsNullOrWhiteSpace($expCmd) -and -not [string]::IsNullOrWhiteSpace($liveCmd)) {
+        if ($expCmd -ne $liveCmd) { return $false }
+    }
+    return $true
+}
+
+function Get-TrackedSessionEntries {
+    param($State)
+    $entries = @()
+    if (-not $State) { return $entries }
+
+    if ($State.tracked) {
+        foreach ($t in @($State.tracked)) {
+            if ($t) { $entries += $t }
+        }
+        return $entries
+    }
+
+    # Legacy pid files without identity metadata: treat as unmatched (do not kill by PID alone).
+    return @()
+}
+
 function Stop-PidSafe {
     param([int]$ProcessId, [string]$Label = 'process')
     if ($ProcessId -le 0) { return }
@@ -152,19 +238,16 @@ function Read-ReviewPidState {
 function Get-AliveSessionPids {
     param($State)
     if (-not $State) { return @() }
-    $candidates = @(
-        $State.apiNodePids
-        $State.webNodePids
-        $State.apiPid
-        $State.webPid
-        $State.apiShellPid
-        $State.webShellPid
-    ) | Where-Object { $_ } | ForEach-Object { [int]$_ } | Select-Object -Unique
     $alive = @()
-    foreach ($id in $candidates) {
-        if (Get-Process -Id $id -ErrorAction SilentlyContinue) { $alive += $id }
+    foreach ($entry in (Get-TrackedSessionEntries -State $State)) {
+        $pidVal = 0
+        try { $pidVal = [int]$entry.pid } catch { continue }
+        if ($pidVal -le 0) { continue }
+        if (Test-ProcessIdentityMatch -Expected $entry -ProcessId $pidVal) {
+            $alive += $pidVal
+        }
     }
-    return $alive
+    return @($alive | Select-Object -Unique)
 }
 
 function Clear-ReviewSessionFromPidFile {
@@ -172,20 +255,24 @@ function Clear-ReviewSessionFromPidFile {
     $stopped = @()
     $state = Read-ReviewPidState -PidFile $PidFile
     if ($state) {
-        $ids = @(
-            $state.apiNodePids
-            $state.webNodePids
-            $state.apiPid
-            $state.webPid
-            $state.apiShellPid
-            $state.webShellPid
-        ) | Where-Object { $_ } | ForEach-Object { [int]$_ } | Select-Object -Unique
-        foreach ($id in $ids) {
-            if (Get-Process -Id $id -ErrorAction SilentlyContinue) {
-                Stop-ProcessTree -RootPid $id -Label 'session'
-                $stopped += $id
+        $entries = @(Get-TrackedSessionEntries -State $state)
+        if ($entries.Count -eq 0 -and ($state.apiPid -or $state.webPid -or $state.apiShellPid -or $state.webShellPid)) {
+            Write-Host "  PID file lacks process identity metadata - refusing to kill by PID alone (treating as stale)" -ForegroundColor Yellow
+        }
+        foreach ($entry in $entries) {
+            $pidVal = 0
+            try { $pidVal = [int]$entry.pid } catch { continue }
+            if ($pidVal -le 0) { continue }
+            if (-not (Get-Process -Id $pidVal -ErrorAction SilentlyContinue)) {
+                Write-Host "  session PID $pidVal already gone" -ForegroundColor Cyan
+                continue
+            }
+            if (Test-ProcessIdentityMatch -Expected $entry -ProcessId $pidVal) {
+                $role = if ($entry.role) { [string]$entry.role } else { 'session' }
+                Stop-ProcessTree -RootPid $pidVal -Label $role
+                $stopped += $pidVal
             } else {
-                Write-Host "  session PID $id already gone" -ForegroundColor Cyan
+                Write-Host "  WARN: PID $pidVal does not match stored identity - leaving process alone (stale/reused PID)" -ForegroundColor Yellow
             }
         }
     }
