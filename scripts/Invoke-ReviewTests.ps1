@@ -51,6 +51,10 @@ Step 'web tests' {
     try { npm test } finally { Pop-Location }
 }
 
+Step 'launcher helpers (FRV-45, no process lifecycle)' {
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'scripts\Test-ReviewLauncherHelpers.ps1')
+}
+
 Step 'shared typecheck' {
     Push-Location (Join-Path $root 'review\shared')
     try { npm run typecheck } finally { Pop-Location }

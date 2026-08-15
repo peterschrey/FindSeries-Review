@@ -13,6 +13,16 @@ export default defineConfig({
       },
     },
   },
+  // FRV-45: vite preview must proxy /api the same way as the dev server.
+  preview: {
+    port: 5173,
+    proxy: {
+      '/api': {
+        target: 'http://127.0.0.1:8787',
+        changeOrigin: true,
+      },
+    },
+  },
   test: {
     environment: 'jsdom',
     globals: true,

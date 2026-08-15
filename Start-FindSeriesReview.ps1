@@ -6,38 +6,39 @@
   Preflight checks (Node >= 20, required folders, DB path, Review schema v105),
   then starts backend and frontend with PID-file locking, logs, port checks,
   and optional browser open. Does NOT auto-migrate the database.
+  Never uses the productive FindSeries DB as a silent default.
 
 .PARAMETER DatabasePath
   SQLite DB path. Default: $env:REVIEW_DB_PATH or
   C:\Temp\FindSeries-Review-Test\review-dev-mini.db
-  (full gate / 100k+ copy only via explicit -DatabasePath / REVIEW_PERF_DB_PATH)
 
 .PARAMETER ApiPort
-  Backend port (default 8787 = REVIEW_API_PORT / review/api/src/index.ts).
+  Backend port (default 8787).
 
 .PARAMETER WebPort
-  Frontend Vite port (default 5173 = review/web/vite.config.ts).
+  Frontend Vite port (default 5173).
 
 .PARAMETER SkipBrowser
   Do not open the browser.
 
 .PARAMETER ProductionWeb
-  Serve Vite production build via `vite preview` instead of `vite` dev server.
-  Requires review/web/dist to exist (run npm run build in review/web first).
+  Force vite preview (requires review/web/dist).
+
+.PARAMETER DevWeb
+  Force Vite dev server even if dist/ exists.
 
 .PARAMETER NoApiBuild
-  Prefer `tsx src/index.ts` even if review/api/dist/index.js exists.
+  Prefer tsx src/index.ts even if review/api/dist/index.js exists.
 
 .EXAMPLE
   .\Start-FindSeriesReview.ps1
-  .\Start-FindSeriesReview.ps1 -DatabasePath 'E:\Temp\FindSeries-Review-Test\frv44-work.db'
-  $env:REVIEW_DB_PATH = 'E:\...\copy.db'; .\Start-FindSeriesReview.ps1 -SkipBrowser
+  .\Start-FindSeriesReview.ps1 -DatabasePath 'C:\Temp\FindSeries-Review-Test\review-dev-mini.db'
+  .\Start-FindSeriesReview.ps1 -SkipBrowser -DevWeb
 
 .NOTES
   Stop with: .\Stop-FindSeriesReview.ps1
+  One-time prepare: .\Prepare-FindSeriesReview.ps1
   Logs: C:\Temp\FindSeries-Review-Test\logs\ (fallback: .\logs)
-  PID file: same log dir / findseries-review.pid
-  Required Review schema: version 105 in review_schema_migrations (no auto-migrate).
 #>
 [CmdletBinding()]
 param(
@@ -46,43 +47,18 @@ param(
     [int]$WebPort = 5173,
     [switch]$SkipBrowser,
     [switch]$ProductionWeb,
+    [switch]$DevWeb,
     [switch]$NoApiBuild
 )
 
 $ErrorActionPreference = 'Stop'
 $RepoRoot = $PSScriptRoot
 if (-not $RepoRoot) { $RepoRoot = (Get-Location).Path }
+. (Join-Path $RepoRoot 'scripts\ReviewLauncherCommon.ps1')
 
 function Write-Info([string]$Message) { Write-Host $Message -ForegroundColor Cyan }
 function Write-Ok([string]$Message) { Write-Host $Message -ForegroundColor Green }
 function Write-Fail([string]$Message) { Write-Host $Message -ForegroundColor Red }
-
-function Get-LogDir {
-    $preferred = 'C:\Temp\FindSeries-Review-Test\logs'
-    try {
-        if (-not (Test-Path -LiteralPath $preferred)) {
-            New-Item -ItemType Directory -Path $preferred -Force | Out-Null
-        }
-        return (Resolve-Path -LiteralPath $preferred).Path
-    } catch {
-        $fallback = Join-Path $RepoRoot 'logs'
-        New-Item -ItemType Directory -Path $fallback -Force | Out-Null
-        return (Resolve-Path -LiteralPath $fallback).Path
-    }
-}
-
-function Test-PortFree([int]$Port) {
-    $listeners = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
-    return -not $listeners
-}
-
-function Get-NodeMajorVersion {
-    $nodeCmd = Get-Command node -ErrorAction SilentlyContinue
-    if (-not $nodeCmd) { return $null }
-    $v = (& node -v 2>$null) -replace '^v', ''
-    if (-not $v) { return $null }
-    return [int](($v -split '\.')[0])
-}
 
 function Assert-ReviewSchema105([string]$DbPath, [string]$SqlitePath) {
     if (-not (Test-Path -LiteralPath $SqlitePath)) {
@@ -112,9 +88,19 @@ This launcher does NOT auto-migrate.
     }
 }
 
+function Invoke-SessionCleanup {
+    param([string]$PidFilePath)
+    if (Test-Path -LiteralPath (Join-Path $RepoRoot 'Stop-FindSeriesReview.ps1')) {
+        & (Join-Path $RepoRoot 'Stop-FindSeriesReview.ps1') -PidFile $PidFilePath -ApiPort $ApiPort -WebPort $WebPort -CleanOrphans
+    } else {
+        [void](Clear-ReviewSessionFromPidFile -PidFile $PidFilePath)
+        [void](Stop-ReviewOrphanListeners -RepoRoot $RepoRoot -ApiPort $ApiPort -WebPort $WebPort)
+    }
+}
+
 # --- resolve paths ---
-$logDir = Get-LogDir
-$pidFile = Join-Path $logDir 'findseries-review.pid'
+$logDir = Get-ReviewLogDir -RepoRoot $RepoRoot
+$pidFile = Get-ReviewPidFilePath -RepoRoot $RepoRoot
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $apiLog = Join-Path $logDir "api-$stamp.log"
 $webLog = Join-Path $logDir "web-$stamp.log"
@@ -137,29 +123,40 @@ Write-Info "FindSeries Review launcher"
 Write-Info "  Repo: $RepoRoot"
 Write-Info "  DB:   $DatabasePath"
 Write-Info "  Logs: $logDir"
+Write-Info "  API log: $apiLog"
+Write-Info "  Web log: $webLog"
+Write-Info "  PID file: $pidFile"
 
-# --- double-start guard ---
+# --- production DB hard refuse (no silent write target) ---
+if (Test-IsProductionDbPath -Path $DatabasePath) {
+    Write-Fail @"
+REFUSING productive FindSeries DB as Review write target:
+  $DatabasePath
+Use a Temp copy (default: review-dev-mini.db) or an explicit migrated work copy.
+This launcher never auto-migrates and never opens production for Review writes.
+"@
+    exit 1
+}
+
+# --- double-start / stale PID ---
 if (Test-Path -LiteralPath $pidFile) {
-    $existing = Get-Content -LiteralPath $pidFile -ErrorAction SilentlyContinue | ConvertFrom-Json -ErrorAction SilentlyContinue
-    if ($existing) {
-        $alive = @()
-        foreach ($p in @($existing.apiPid, $existing.webPid)) {
-            if ($p -and (Get-Process -Id $p -ErrorAction SilentlyContinue)) { $alive += $p }
-        }
-        if ($alive.Count -gt 0) {
-            Write-Fail "Already running (PIDs: $($alive -join ', ')). Stop first: .\Stop-FindSeriesReview.ps1"
-            exit 1
-        }
+    $existing = Read-ReviewPidState -PidFile $pidFile
+    $alive = @(Get-AliveSessionPids -State $existing)
+    if ($alive.Count -gt 0) {
+        Write-Fail "Already running (PIDs: $($alive -join ', ')). Stop first: .\Stop-FindSeriesReview.ps1"
+        exit 1
     }
+    Write-Info "Removing stale PID file (no living session processes)"
     Remove-Item -LiteralPath $pidFile -Force -ErrorAction SilentlyContinue
 }
 
 # --- Node ---
-$nodeMajor = Get-NodeMajorVersion
-if ($null -eq $nodeMajor) {
-    Write-Fail "Node.js not found on PATH. Install Node.js >= 20."
+$nodeCmd = Get-Command node -ErrorAction SilentlyContinue
+if (-not $nodeCmd) {
+    Write-Fail "Node.js not found on PATH. Install Node.js >= 20, then run .\Prepare-FindSeriesReview.ps1"
     exit 1
 }
+$nodeMajor = [int](((& node -v) -replace '^v', '' -split '\.')[0])
 if ($nodeMajor -lt 20) {
     Write-Fail "Node.js v$nodeMajor detected; need >= 20."
     exit 1
@@ -173,17 +170,15 @@ foreach ($dir in @($apiDir, $webDir, $sharedDir)) {
         exit 1
     }
 }
-if (-not (Test-Path -LiteralPath (Join-Path $apiDir 'package.json'))) {
-    Write-Fail "Missing review/api/package.json"
-    exit 1
-}
-if (-not (Test-Path -LiteralPath (Join-Path $webDir 'package.json'))) {
-    Write-Fail "Missing review/web/package.json"
-    exit 1
-}
-if (-not (Test-Path -LiteralPath (Join-Path $sharedDir 'package.json'))) {
-    Write-Fail "Missing review/shared/package.json"
-    exit 1
+foreach ($pkg in @(
+        (Join-Path $apiDir 'package.json'),
+        (Join-Path $webDir 'package.json'),
+        (Join-Path $sharedDir 'package.json')
+    )) {
+    if (-not (Test-Path -LiteralPath $pkg)) {
+        Write-Fail "Missing $pkg"
+        exit 1
+    }
 }
 Write-Ok "Required review packages present"
 
@@ -201,13 +196,15 @@ try {
 }
 Write-Ok "Review schema version 105 present"
 
-# --- ports ---
-if (-not (Test-PortFree $ApiPort)) {
-    Write-Fail "API port $ApiPort is already in use."
+# --- ports (never kill foreign processes) ---
+if (-not (Test-PortFree -Port $ApiPort)) {
+    Write-Fail "API port $ApiPort is already in use by: $(Get-PortOccupantSummary -Port $ApiPort)"
+    Write-Fail "Free the port manually or choose -ApiPort. This launcher will not kill foreign processes."
     exit 1
 }
-if (-not (Test-PortFree $WebPort)) {
-    Write-Fail "Web port $WebPort is already in use."
+if (-not (Test-PortFree -Port $WebPort)) {
+    Write-Fail "Web port $WebPort is already in use by: $(Get-PortOccupantSummary -Port $WebPort)"
+    Write-Fail "Free the port manually or choose -WebPort. This launcher will not kill foreign processes."
     exit 1
 }
 Write-Ok "Ports $ApiPort / $WebPort free"
@@ -220,84 +217,102 @@ $env:REVIEW_API_HOST = if ($env:REVIEW_API_HOST) { $env:REVIEW_API_HOST } else {
 $apiDist = Join-Path $apiDir 'dist\index.js'
 $useBuiltApi = (-not $NoApiBuild) -and (Test-Path -LiteralPath $apiDist)
 if ($useBuiltApi) {
-    $apiCmd = "node `"$apiDist`""
-    Write-Info "Starting API (built): $apiCmd"
+    $apiInner = "node `"$apiDist`""
+    Write-Info "Starting API (built): dist/index.js"
 } else {
     $tsx = Join-Path $apiDir 'node_modules\.bin\tsx.cmd'
     if (-not (Test-Path -LiteralPath $tsx)) {
-        Write-Fail "tsx not found at $tsx — run npm install in review/api (or build dist/)."
+        Write-Fail "tsx not found at $tsx - run .\Prepare-FindSeriesReview.ps1"
         exit 1
     }
-    $apiCmd = "& `"$tsx`" `"$(Join-Path $apiDir 'src\index.ts')`""
+    $apiSrc = Join-Path $apiDir 'src\index.ts'
+    $apiInner = "& `"$tsx`" `"$apiSrc`""
     Write-Info "Starting API (tsx): src/index.ts"
 }
 
+$apiCommand = @"
+Set-Location -LiteralPath '$apiDir'
+`$env:REVIEW_DB_PATH='$DatabasePath'
+`$env:REVIEW_API_PORT='$ApiPort'
+`$env:REVIEW_API_HOST='$($env:REVIEW_API_HOST)'
+$apiInner *>> '$apiLog'
+"@
+
 $apiProc = Start-Process -FilePath 'powershell.exe' -ArgumentList @(
-    '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command',
-    "Set-Location -LiteralPath '$apiDir'; `$env:REVIEW_DB_PATH='$DatabasePath'; `$env:REVIEW_API_PORT='$ApiPort'; `$env:REVIEW_API_HOST='$($env:REVIEW_API_HOST)'; $apiCmd *>> '$apiLog'"
+    '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', $apiCommand
 ) -PassThru -WindowStyle Hidden
 
 # --- start Web ---
 $viteBin = Join-Path $webDir 'node_modules\.bin\vite.cmd'
 if (-not (Test-Path -LiteralPath $viteBin)) {
-    Stop-Process -Id $apiProc.Id -Force -ErrorAction SilentlyContinue
-    Write-Fail "vite not found at $viteBin — run npm install in review/web."
+    Stop-ProcessTree -RootPid $apiProc.Id -Label 'api-shell'
+    [void](Stop-ReviewOrphanListeners -RepoRoot $RepoRoot -ApiPort $ApiPort -WebPort $WebPort)
+    Write-Fail "vite not found at $viteBin - run .\Prepare-FindSeriesReview.ps1"
     exit 1
 }
 
-if ($ProductionWeb) {
-    $webDist = Join-Path $webDir 'dist'
-    if (-not (Test-Path -LiteralPath $webDist)) {
-        Stop-Process -Id $apiProc.Id -Force -ErrorAction SilentlyContinue
-        Write-Fail "ProductionWeb requested but review/web/dist missing. Run: npm run build (in review/web)"
-        exit 1
-    }
-    $webCmd = "& `"$viteBin`" preview --host 127.0.0.1 --port $WebPort"
-    Write-Info "Starting Web (vite preview) on $WebPort"
-} else {
-    $webCmd = "& `"$viteBin`" --host 127.0.0.1 --port $WebPort"
-    Write-Info "Starting Web (vite) on $WebPort"
+$webDist = Join-Path $webDir 'dist'
+$usePreview = $false
+if ($DevWeb) {
+    $usePreview = $false
+} elseif ($ProductionWeb) {
+    $usePreview = $true
+} elseif (Test-Path -LiteralPath $webDist) {
+    $usePreview = $true
 }
 
-$webProc = Start-Process -FilePath 'powershell.exe' -ArgumentList @(
-    '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command',
-    "Set-Location -LiteralPath '$webDir'; $webCmd *>> '$webLog'"
-) -PassThru -WindowStyle Hidden
+if ($usePreview) {
+    if (-not (Test-Path -LiteralPath $webDist)) {
+        Stop-ProcessTree -RootPid $apiProc.Id -Label 'api-shell'
+        [void](Stop-ReviewOrphanListeners -RepoRoot $RepoRoot -ApiPort $ApiPort -WebPort $WebPort)
+        Write-Fail "ProductionWeb/preview requested but review/web/dist missing. Run: .\Prepare-FindSeriesReview.ps1"
+        exit 1
+    }
+    $webInner = "& `"$viteBin`" preview --host 127.0.0.1 --port $WebPort --strictPort"
+    Write-Info "Starting Web (vite preview) on $WebPort"
+} else {
+    $webInner = "& `"$viteBin`" --host 127.0.0.1 --port $WebPort --strictPort"
+    Write-Info "Starting Web (vite dev) on $WebPort"
+}
+
+$webCommand = @"
+Set-Location -LiteralPath '$webDir'
+$webInner *>> '$webLog'
+"@
+
+try {
+    $webProc = Start-Process -FilePath 'powershell.exe' -ArgumentList @(
+        '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', $webCommand
+    ) -PassThru -WindowStyle Hidden
+} catch {
+    Stop-ProcessTree -RootPid $apiProc.Id -Label 'api-shell'
+    [void](Stop-ReviewOrphanListeners -RepoRoot $RepoRoot -ApiPort $ApiPort -WebPort $WebPort)
+    Write-Fail "Failed to start Web process: $($_.Exception.Message)"
+    exit 1
+}
 
 # Wait briefly and discover child node PIDs
 Start-Sleep -Seconds 2
 
-function Get-ChildNodePids([int]$ParentPid) {
-    $found = @()
-    try {
-        $procs = Get-CimInstance Win32_Process -Filter "ParentProcessId=$ParentPid" -ErrorAction SilentlyContinue
-        foreach ($p in @($procs)) {
-            if ($p.Name -match '^(node|tsx)') { $found += [int]$p.ProcessId }
-            $found += Get-ChildNodePids -ParentPid ([int]$p.ProcessId)
-        }
-    } catch { }
-    return $found
-}
-
-$apiNodePids = @(Get-ChildNodePids -ParentPid $apiProc.Id | Select-Object -Unique)
-$webNodePids = @(Get-ChildNodePids -ParentPid $webProc.Id | Select-Object -Unique)
-# Fallback: parent powershell if children not yet visible
+$apiNodePids = @(Get-ChildNodePids -ParentPid $apiProc.Id)
+$webNodePids = @(Get-ChildNodePids -ParentPid $webProc.Id)
 $apiTrack = if ($apiNodePids.Count) { $apiNodePids[0] } else { $apiProc.Id }
 $webTrack = if ($webNodePids.Count) { $webNodePids[0] } else { $webProc.Id }
 
 $pidPayload = [ordered]@{
-    startedAt = (Get-Date).ToUniversalTime().ToString('o')
-    databasePath = $DatabasePath
-    apiPort = $ApiPort
-    webPort = $WebPort
-    apiShellPid = $apiProc.Id
-    webShellPid = $webProc.Id
-    apiPid = $apiTrack
-    webPid = $webTrack
-    apiNodePids = @($apiNodePids)
-    webNodePids = @($webNodePids)
-    apiLog = $apiLog
-    webLog = $webLog
+    startedAt     = (Get-Date).ToUniversalTime().ToString('o')
+    databasePath  = $DatabasePath
+    apiPort       = $ApiPort
+    webPort       = $WebPort
+    apiShellPid   = $apiProc.Id
+    webShellPid   = $webProc.Id
+    apiPid        = $apiTrack
+    webPid        = $webTrack
+    apiNodePids   = @($apiNodePids)
+    webNodePids   = @($webNodePids)
+    apiLog        = $apiLog
+    webLog        = $webLog
+    mode          = $(if ($usePreview) { 'production-preview' } else { 'dev' })
 }
 $pidPayload | ConvertTo-Json | Set-Content -LiteralPath $pidFile -Encoding UTF8
 
@@ -322,20 +337,19 @@ while ((Get-Date) -lt $deadline) {
     Start-Sleep -Milliseconds 500
 }
 
-if (-not $apiReady) {
-    Write-Fail "API did not become ready on port $ApiPort. See log: $apiLog"
-    & (Join-Path $RepoRoot 'Stop-FindSeriesReview.ps1')
-    exit 1
-}
-if (-not $webReady) {
-    Write-Fail "Web did not become ready on port $WebPort. See log: $webLog"
-    & (Join-Path $RepoRoot 'Stop-FindSeriesReview.ps1')
+if (-not $apiReady -or -not $webReady) {
+    if (-not $apiReady) { Write-Fail "API did not become ready on port $ApiPort. See log: $apiLog" }
+    if (-not $webReady) { Write-Fail "Web did not become ready on port $WebPort. See log: $webLog" }
+    Write-Info "Cleaning up partial start..."
+    Invoke-SessionCleanup -PidFilePath $pidFile
+    [void](Stop-ReviewOrphanListeners -RepoRoot $RepoRoot -ApiPort $ApiPort -WebPort $WebPort)
     exit 1
 }
 
 Write-Ok "API ready: http://127.0.0.1:$ApiPort"
 Write-Ok "Web ready: http://127.0.0.1:$WebPort"
 Write-Ok "PID file: $pidFile"
+Write-Ok "Logs: $apiLog | $webLog"
 
 if (-not $SkipBrowser) {
     Start-Process "http://127.0.0.1:$WebPort/"

@@ -5,6 +5,8 @@
   "scripts": {
     "test": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/Invoke-ReviewTests.ps1",
     "test:gate": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/Invoke-ReviewTests.ps1 -SkipInstall",
-    "test:migration-smoke": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/Invoke-ReviewMigrationSmoke.ps1"
+    "test:migration-smoke": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/Invoke-ReviewMigrationSmoke.ps1",
+    "test:launcher-helpers": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/Test-ReviewLauncherHelpers.ps1",
+    "test:launcher-smoke": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/Invoke-Frv45LauncherSmoke.ps1"
   }
 }
