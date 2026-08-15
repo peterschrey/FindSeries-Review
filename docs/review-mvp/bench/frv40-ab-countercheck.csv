@@ -1,0 +1,13 @@
+metric,state,p50_ms,p95_ms,n,media_count,delta_pct_vs_A,note
+gallery,A_d5013ba,677.28,773.8,30,184991,,review-base code on current gate DB
+gallery,B_HEAD,653,721.82,30,184991,-3.6,current HEAD on same gate DB
+category_subtree,A_d5013ba,389.88,418.14,30,184991,,review-base code on current gate DB
+category_subtree,B_HEAD,377.08,407.51,30,184991,-3.3,current HEAD on same gate DB
+category_gallery,A_d5013ba,1718.88,1921.23,30,184991,,review-base code on current gate DB
+category_gallery,B_HEAD,1624.42,1797.51,30,184991,-5.5,current HEAD on same gate DB
+focus,A_d5013ba,1527.55,1866.84,30,184991,,review-base code on current gate DB
+focus,B_HEAD,1484.23,1652.25,30,184991,-2.8,current HEAD on same gate DB
+facets,A_d5013ba,1728.69,1973.7,30,184991,,review-base code on current gate DB
+facets,B_HEAD,1724.06,1874.13,30,184991,-0.3,current HEAD on same gate DB
+status_counts,A_d5013ba,5.58,5.96,30,184991,,review-base code on current gate DB
+status_counts,B_HEAD,5.43,6.02,30,184991,-2.7,current HEAD on same gate DB

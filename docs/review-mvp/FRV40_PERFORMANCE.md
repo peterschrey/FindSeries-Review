@@ -1,7 +1,7 @@
 # FRV-40 — Performance Gate (100k+)
 
-**Status:** PASS WITH DEVIATION  
-**Date:** 2026-08-15 (FIX REVIEW)  
+**Status:** PASS  
+**Date:** 2026-08-15 (FINAL countercheck)  
 **Branch:** `review-mvp`  
 **Review-base:** `d5013ba8c4984ec8f9d547efc8fd47c763d8f3de`  
 **Scope:** Technischer Gate only (manuelle UX → FRV-47).
@@ -12,7 +12,8 @@
 npm run test:perf:frv40
 npm run bench:frv40
 npm run bench:frv40:browser
-npm --prefix review/api run bench:frv40:groups-isolate
+npm run bench:frv40:ab
+npm run bench:frv40:groups-isolate
 ```
 
 ## Pfade
@@ -21,73 +22,77 @@ npm --prefix review/api run bench:frv40:groups-isolate
 |---|---|
 | Produktiv | nie |
 | Read | `C:\Temp\FindSeries-Review-Test\findseries-v5-phase1-gate.db` |
-| Write | nur unter `C:\Temp\FindSeries-Review-Test\` via `assertSafeBenchWriteDb` → `bench-write-copy.db` |
+| Write | `assertSafeBenchWriteDb` → nur `C:\Temp\FindSeries-Review-Test\bench-write-copy.db` |
 | Medien | **184 991** |
 
 ## Methodik
 
-1. **Primary (Regression-Gate):** ein Prozess / eine Connection, Cold-Suite → Warm-Suite — vergleichbar mit `frv40-results.baseline.csv`
-2. **Supplemental:** `REVIEW_FRV40_SUPPLEMENTAL_CHILD=1` (fresh-process) — nicht 1:1 gegen Baseline flaggen
-3. Browser: Playwright Real-DB (`frv40-browser.csv`)
+1. **Primary (Regression-Gate):** same-process Cold→Warm (baseline-compatible suite)
+2. **A/B Countercheck:** Review-Base `d5013ba` vs HEAD auf **identischer** Gate-DB (siehe `FRV40_AB_COUNTERCHECK.md`)
+3. **Browser:** Playwright Real-DB — autoritativ in `frv40-browser.csv` / `FRV40_BROWSER.md`
 
-Baseline-Datei unverändert.
+Historische Datei `frv40-results.baseline.csv` bleibt **unverändert**.  
+Zusätzlich: `frv40-release-baseline.csv` (Release-Referenz auf aktuellem DB/Host; ersetzt die historische CSV nicht).
 
-## A. groups_provenance Isolation — VERIFIED
+## Historische Baseline-Provenienz
 
-| | Warm p50 | Δ vs Baseline 1490 ms |
+| Item | Evidence |
+|---|---|
+| Datei | `docs/review-mvp/bench/frv40-results.baseline.csv` |
+| Erstmals in Git | `c54ae4ba5b7989c874efb7777e60f9350f86ee9c` (2026-08-15 01:46 +0200) |
+| Exakter Generierungs-Commit / DB-Kopie / Host | **NOT_VERIFIED** |
+| Methodik der Ära | same-process Cold→Warm (INFERRED aus `bench-frv40.ts` bei c54ae4b) |
+| Kennzeichnung | **HISTORICAL / NOT_DIRECTLY_REPRODUCIBLE** |
+
+## groups_provenance — VERIFIED_FIXED
+
+Unverändert belassen. Warm ≤ historische Baseline nach Single-Pass-Fix. Siehe `FRV40_GROUPS_ISOLATE.md`.
+
+## A/B Countercheck (offene Metriken) — VERIFIED
+
+A = `d5013ba` worktree · B = HEAD · gleiche DB · 3× A→B · n=30/Metrik/Zustand
+
+| Metric | A p50 | B p50 | Δ B vs A |
+|---|---:|---:|---:|
+| gallery | 677 | 653 | **−3.6 %** |
+| category_subtree | 390 | 377 | **−3.3 %** |
+| category_gallery | 1719 | 1624 | **−5.5 %** |
+| focus | 1528 | 1484 | **−2.8 %** |
+| facets | 1729 | 1724 | **−0.3 %** |
+| status_counts | 5.6 | 5.4 | **−2.7 %** |
+
+**Klassifikation:** `VERIFIED_NO_CODE_REGRESSION`  
+Historische CSV-Abweichungen vs aktuelle Messungen sind **kein aktueller P0-Codefehler** gegenüber Review-Base (Fall 1/3).
+
+## Browser (autoritativ — `FRV40_BROWSER.md` / `frv40-browser.csv`)
+
+| Metric | Cold | Warm |
 |---|---:|---:|
-| Vor Fix, Method A (same-process) | ~3057 ms | **+105 %** |
-| Vor Fix, Method B (child) | ~3224 ms | **+116 %** |
-| Nach Fix, Method A | ~1398 ms | **−6 %** |
-| Nach Fix, Method B | ~1172 ms | **−21 %** |
+| time_to_first_grid_ms | **6126** | **6587** |
+| Visible thumbs | 54 | 54 |
+| DOM nodes after scroll | — | 8818 |
+| Long tasks (count) | 0 | 0 |
+| rAF frame p95 (ms) | — | 16.8 |
+| JS heap (MB) | — | 9.5 |
 
-**Klassifikation vorher:** **A = echte Regression (VERIFIED)** — nicht Methodik/Rauschen.  
-Beide Methoden waren >20 % langsamer.
+Lauf-zu-Lauf-Spanne First Grid auf Real-DB typisch **~6–13 s** (frühere Artefakte u. a. ~8.7 / ~12.9 s). Sachlich dokumentiert; keine „schnell“-Bewertung. UX → FRV-47. Virtualisierung bounded.
 
-**Ursache (VERIFIED):** Nach P0-Correctness drei Full-Scans (keyOnly + visibleStat + progressStat), je ~1.3–1.5 s.
+## Bulk / Write Guard
 
-**Fix:** ein Aggregat-Scan; Visible aus UI-Status-Spalten; `progressStatusCounts` aus derselben Zeile. P0-B-Tests grün.
-
-## B. Weitere >20 %-Flags (methodengleich Warm)
-
-Aktuell (Run 2 Warm, nach Fix): gallery ~1011, category_subtree ~484, category_gallery ~2051, focus ~2040, facets ~3075 vs Baseline ~571 / ~351 / ~1478 / ~1309 / ~1554.
-
-| Flag | Evidence | Einordnung |
-|---|---|---|
-| groups_provenance | VERIFIED | behoben (s. oben) |
-| gallery | **INFERRED** | `gallery.ts` seit Baseline-Commit **unverändert**; Default-Filter-CTE ohne Series-Sonderfall gleich → kein klarer Code-P0; wahrscheinlicher Gate-DB-/Host-Pfad nach FRV-46-Recopy / Messlast |
-| focus / facets / category_* | **INFERRED** | Fokus: kleine AND-Semantik seit P0 C; Facets-SQL im Kern unverändert; Absolute weiter Sekunden, kein Minuten-Stall; kein gezielter P0-Fix ohne spekulative Optimierung |
-
-Keine spekulative Optimierung dieser INFERRED-Flags in diesem Fixloop.
-
-## C. Write-DB Guard
-
-`assertSafeBenchWriteDb()`: nur `C:\Temp\FindSeries-Review-Test\…`; FAIL Produktiv / E: / andere C: / Gate als Write-Ziel. Tests in `bench-write-db-guard.test.ts`.
-
-## D. Browser (keine UI-Optimierung)
-
-| | Cold | Warm |
-|---|---:|---:|
-| time_to_first_grid_ms | ~9299 | ~10235 |
-| thumbs DOM | 54 | 54 |
-| DOM nodes | — | ~8802 |
-| Long tasks | 0 | 0 |
-| rAF p95 | — | ~16.7 ms |
-
-First Grid ~9–10 s: gemessen, **nicht** als „schnell“ bewertet (UX → FRV-47). Virtualisierung bounded.
-
-## E. Bulk
-
-1 / 100 / 10k: ~9–27 ms / ~4–9 ms / ~335–432 ms; Undo; **restoreOk=true**.
+Bulk 1/100/10k: ~8 ms / ~7 ms / ~788 ms; Undo; **restoreOk=true**. Write nur unter Temp-Root.
 
 ## Verdict
 
-**PASS WITH DEVIATION**
+**PASS**
 
-- Groups-P0: **VERIFIED** behoben  
-- Weitere >20 %-Flags: **INFERRED** (kein unveränderter Code-Pfad-P0 für Gallery); kein Minuten-Stall; DoD technisch erfüllt  
-- Manuelle UX: FRV-47
+- Groups: VERIFIED_FIXED  
+- Offene API-Deltas vs historischer CSV: HISTORICAL / NOT_DIRECTLY_REPRODUCIBLE; vs Review-Base: **keine** ungeklärte >20 %-Code-Regression (VERIFIED)  
+- Browser-Artefakte konsistent dokumentiert  
 
 ## Artefakte
 
-`frv40-results.csv`, `frv40-results.baseline.csv` (immutable), `frv40-groups-isolate.csv`, `FRV40_GROUPS_ISOLATE.md`, `frv40-browser.csv`, `FRV40_BROWSER.md`
+- `frv40-results.baseline.csv` (immutable, historical)
+- `frv40-release-baseline.csv` (zusätzliche Release-Referenz)
+- `frv40-results.csv`, `frv40-ab-countercheck.csv`, `FRV40_AB_COUNTERCHECK.md`
+- `frv40-groups-isolate.csv`, `FRV40_GROUPS_ISOLATE.md`
+- `frv40-browser.csv`, `FRV40_BROWSER.md`

@@ -14,6 +14,7 @@
     "bench:frv40": "npm --prefix review/api run bench:frv40",
     "bench:frv40:browser": "npm --prefix review/api run build && npm --prefix review/web run build && npm --prefix review/api run bench:frv40:browser",
     "bench:frv40:groups-isolate": "npm --prefix review/api run bench:frv40:groups-isolate",
+    "bench:frv40:ab": "npm --prefix review/api run bench:frv40:ab",
     "test:perf:frv40": "npm run bench:frv40 && npm run bench:frv40:browser"
   }
 }
