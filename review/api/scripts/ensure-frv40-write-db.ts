@@ -13,6 +13,7 @@ import {
   DEFAULT_PERF_DB,
   DEFAULT_WRITE_DB,
   assertSafeBenchDb,
+  assertSafeBenchWriteDb,
   repoRoot,
 } from './bench-shared.js';
 
@@ -45,7 +46,8 @@ export function ensureFrv40WriteDb(opts?: {
   writePath?: string;
   force?: boolean;
 }): string {
-  const write = assertSafeBenchDb(opts?.writePath ?? DEFAULT_WRITE_DB);
+  // Destructive unlink/rebuild: Temp write-root only (never gate / production / E: / other C:).
+  const write = assertSafeBenchWriteDb(opts?.writePath ?? DEFAULT_WRITE_DB);
   const gate = assertSafeBenchDb(opts?.gatePath ?? DEFAULT_PERF_DB);
   if (!fs.existsSync(gate)) throw new Error(`Gate DB missing: ${gate}`);
 

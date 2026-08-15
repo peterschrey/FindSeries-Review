@@ -185,10 +185,6 @@ function labelFor(db: ReviewDb, groupBy: GroupBy, key: string): string {
   return key;
 }
 
-function emptyStatusBucket(): Omit<StatusCounts, 'total'> {
-  return { unreviewed: 0, keep: 0, reject: 0, unsure: 0 };
-}
-
 function toStatusCounts(row: {
   unreviewed?: number;
   keep?: number;
@@ -241,29 +237,6 @@ export function queryGroups(db: ReviewDb, q: GroupQuery): GroupsResponse {
   const uiStatuses = resolveStatuses(filter);
   const lead = leadingCteParams;
 
-  // Key discovery + visible totals/samples respect UI status chips (drilldown gallery).
-  const uiBase = buildFilteredMediaCte(filter, 'count');
-  const keyOnly = db
-    .prepare(
-      `${withFmSql(uiBase.sql, leadingCteSql)}
-       SELECT ${selectKey} AS gkey, COUNT(DISTINCT fm.media_id) AS approx_total
-       FROM fm
-       ${join}
-       WHERE ${selectKey} IS NOT NULL
-       GROUP BY gkey
-       ORDER BY approx_total DESC
-       LIMIT ?`,
-    )
-    .all(...lead, ...uiBase.params, ...jp, q.limit) as Array<{ gkey: string; approx_total: number }>;
-
-  if (!keyOnly.length) {
-    const statusCounts = computeStatusCounts(db, filter, { breakdownAllStatuses: true });
-    return { groups: [], resultTotal: statusCounts.total, statusCounts };
-  }
-
-  const keys = keyOnly.map((r) => String(r.gkey));
-  const keyPlaceholders = keys.map(() => '?').join(',');
-
   type StatRow = {
     gkey: string;
     total: number;
@@ -271,11 +244,38 @@ export function queryGroups(db: ReviewDb, q: GroupQuery): GroupsResponse {
     keep: number;
     reject: number;
     unsure: number;
+    visible_total: number;
   };
 
-  const visibleStatRows = db
+  /**
+   * Single discoveries pass:
+   * - fm uses all 4 statuses when a progress breakdown is needed, else UI statuses
+   * - visible_total = sum of UI-active status columns (HAVING > 0 keeps UI key semantics)
+   * - full status columns feed progressStatusCounts when UI ⊂ {all 4}
+   *
+   * Avoids the prior keyOnly + visible + progress triple scan (FRV-40 P0).
+   */
+  const needProgress = needsProgressBreakdown(uiStatuses);
+  const scanFilter: MediaFilter = needProgress
+    ? { ...filter, statuses: ['unreviewed', 'keep', 'reject', 'unsure'] }
+    : filter;
+  const scanBase = buildFilteredMediaCte(scanFilter, 'count');
+
+  const uiUnreviewed = uiStatuses !== 'empty' && uiStatuses.includes('unreviewed') ? 1 : 0;
+  const uiKeep = uiStatuses !== 'empty' && uiStatuses.includes('keep') ? 1 : 0;
+  const uiReject = uiStatuses !== 'empty' && uiStatuses.includes('reject') ? 1 : 0;
+  const uiUnsure = uiStatuses !== 'empty' && uiStatuses.includes('unsure') ? 1 : 0;
+
+  const visibleExpr = `(
+    CASE WHEN ${uiUnreviewed} THEN SUM(CASE WHEN review_status='unreviewed' THEN 1 ELSE 0 END) ELSE 0 END +
+    CASE WHEN ${uiKeep} THEN SUM(CASE WHEN review_status='keep' THEN 1 ELSE 0 END) ELSE 0 END +
+    CASE WHEN ${uiReject} THEN SUM(CASE WHEN review_status='reject' THEN 1 ELSE 0 END) ELSE 0 END +
+    CASE WHEN ${uiUnsure} THEN SUM(CASE WHEN review_status='unsure' THEN 1 ELSE 0 END) ELSE 0 END
+  )`;
+
+  const aggRows = db
     .prepare(
-      `${withFmSql(uiBase.sql, leadingCteSql)},
+      `${withFmSql(scanBase.sql, leadingCteSql)},
        tagged AS (
          SELECT DISTINCT fm.media_id AS media_id,
                 fm.review_status AS review_status,
@@ -283,54 +283,34 @@ export function queryGroups(db: ReviewDb, q: GroupQuery): GroupsResponse {
          FROM fm
          ${join}
          WHERE ${selectKey} IS NOT NULL
-           AND ${selectKey} IN (${keyPlaceholders})
        )
        SELECT gkey,
               COUNT(*) AS total,
               SUM(CASE WHEN review_status='unreviewed' THEN 1 ELSE 0 END) AS unreviewed,
               SUM(CASE WHEN review_status='keep' THEN 1 ELSE 0 END) AS keep,
               SUM(CASE WHEN review_status='reject' THEN 1 ELSE 0 END) AS reject,
-              SUM(CASE WHEN review_status='unsure' THEN 1 ELSE 0 END) AS unsure
+              SUM(CASE WHEN review_status='unsure' THEN 1 ELSE 0 END) AS unsure,
+              ${visibleExpr} AS visible_total
        FROM tagged
-       GROUP BY gkey`,
+       GROUP BY gkey
+       HAVING visible_total > 0
+       ORDER BY visible_total DESC
+       LIMIT ?`,
     )
-    .all(...lead, ...uiBase.params, ...jp, ...keys) as StatRow[];
-  const visibleByKey = new Map(visibleStatRows.map((r) => [String(r.gkey), r]));
+    .all(...lead, ...scanBase.params, ...jp, q.limit) as StatRow[];
 
-  let progressByKey = new Map<string, StatRow>();
-  if (needsProgressBreakdown(uiStatuses)) {
-    const allStatusFilter: MediaFilter = {
-      ...filter,
-      statuses: ['unreviewed', 'keep', 'reject', 'unsure'],
-    };
-    const allBase = buildFilteredMediaCte(allStatusFilter, 'count');
-    const progressRows = db
-      .prepare(
-        `${withFmSql(allBase.sql, leadingCteSql)},
-         tagged AS (
-           SELECT DISTINCT fm.media_id AS media_id,
-                  fm.review_status AS review_status,
-                  ${selectKey} AS gkey
-           FROM fm
-           ${join}
-           WHERE ${selectKey} IS NOT NULL
-             AND ${selectKey} IN (${keyPlaceholders})
-         )
-         SELECT gkey,
-                COUNT(*) AS total,
-                SUM(CASE WHEN review_status='unreviewed' THEN 1 ELSE 0 END) AS unreviewed,
-                SUM(CASE WHEN review_status='keep' THEN 1 ELSE 0 END) AS keep,
-                SUM(CASE WHEN review_status='reject' THEN 1 ELSE 0 END) AS reject,
-                SUM(CASE WHEN review_status='unsure' THEN 1 ELSE 0 END) AS unsure
-         FROM tagged
-         GROUP BY gkey`,
-      )
-      .all(...lead, ...allBase.params, ...jp, ...keys) as StatRow[];
-    progressByKey = new Map(progressRows.map((r) => [String(r.gkey), r]));
+  if (!aggRows.length) {
+    const statusCounts = computeStatusCounts(db, filter, { breakdownAllStatuses: true });
+    return { groups: [], resultTotal: statusCounts.total, statusCounts };
   }
+
+  const keys = aggRows.map((r) => String(r.gkey));
+  const keyPlaceholders = keys.map(() => '?').join(',');
+  const statsByKey = new Map(aggRows.map((r) => [String(r.gkey), r]));
 
   const sampleByKey = new Map<string, MediaCard[]>();
   if (q.sampleSize > 0) {
+    const uiBase = buildFilteredMediaCte(filter, 'count');
     const sampleRows = db
       .prepare(
         `${withFmSql(uiBase.sql, leadingCteSql)},
@@ -364,13 +344,17 @@ export function queryGroups(db: ReviewDb, q: GroupQuery): GroupsResponse {
     }
   }
 
-  const groups: GroupCard[] = keyOnly.map((r) => {
+  const groups: GroupCard[] = aggRows.map((r) => {
     const key = String(r.gkey ?? '');
     const drill = drilldownFor(q.groupBy, key, q.projectId, filter);
-    const vis = toStatusCounts(visibleByKey.get(key) ?? {
-      ...emptyStatusBucket(),
-      total: Number(r.approx_total ?? 0),
-    });
+    const st = statsByKey.get(key)!;
+    const vis: StatusCounts = {
+      unreviewed: uiUnreviewed ? Number(st.unreviewed) : 0,
+      keep: uiKeep ? Number(st.keep) : 0,
+      reject: uiReject ? Number(st.reject) : 0,
+      unsure: uiUnsure ? Number(st.unsure) : 0,
+      total: Number(st.visible_total),
+    };
     const card: GroupCard = {
       key,
       label: labelFor(db, q.groupBy, key),
@@ -379,11 +363,8 @@ export function queryGroups(db: ReviewDb, q: GroupQuery): GroupsResponse {
       sampleMedia: sampleByKey.get(key) ?? [],
       drilldown: drill,
     };
-    if (needsProgressBreakdown(uiStatuses)) {
-      const prog = progressByKey.get(key);
-      if (prog) {
-        card.progressStatusCounts = toStatusCounts(prog);
-      }
+    if (needProgress) {
+      card.progressStatusCounts = toStatusCounts(st);
     }
     return card;
   });

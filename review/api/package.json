@@ -14,6 +14,7 @@
     "bench:frv39": "tsx scripts/bench-frv39.ts",
     "bench:frv40": "tsx scripts/bench-frv40.ts",
     "bench:frv40:browser": "tsx scripts/bench-frv40-browser.ts",
+    "bench:frv40:groups-isolate": "tsx scripts/bench-frv40-groups-isolate.ts",
     "bench:frv40:write-db": "tsx scripts/ensure-frv40-write-db.ts"
   },
   "dependencies": {

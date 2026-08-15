@@ -1,8 +1,8 @@
 metric,cache,value,unit,note
-time_to_first_grid,Cold,6205.6,ms,real-db; resultTotal=184991
-time_to_first_grid,Warm,8616.1,ms,real-db; resultTotal=184991
+time_to_first_grid,Cold,8745.1,ms,real-db; resultTotal=184991
+time_to_first_grid,Warm,12871.3,ms,real-db; resultTotal=184991
 scroll_dom_nodes,Warm,8802,count,thumbs=54
-scroll_long_tasks_count,Warm,0,count,max_ms=0.0; sum_ms=0.0
+scroll_long_tasks_count,Warm,1,count,max_ms=54.0; sum_ms=54.0
 scroll_raf_frame_p95,Warm,16.7,ms,n=119
-js_heap_mb,Warm,12.11,MB,ok
+js_heap_mb,Warm,15.35,MB,ok
 media_count_ui,N/A,184991,count,from Ergebnis label

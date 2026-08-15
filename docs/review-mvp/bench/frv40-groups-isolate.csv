@@ -1,0 +1,7 @@
+method,cache,p50_ms,p95_ms,mean_ms,n,media_count,vs_baseline_warm_pct,note
+A_same_process,Cold,1377.56,1378.6,1374.89,5,184991,,baseline-compatible
+A_same_process,Warm,1397.93,1468.87,1410.23,5,184991,-6.2,baseline-compatible; regression gate uses this
+A_standalone20,Warm,1353.13,1555.39,1323.99,20,184991,,20× queryGroups same connection after warm
+B_child_process,Cold,1170.65,1334.67,1201.21,5,184991,,supplemental fresh-process
+B_child_process,Warm,1172.2,1577.47,1272.47,5,184991,-21.4,supplemental; NOT comparable 1:1 to baseline CSV
+classification,N/A,,,,0,184991,,"VERIFIED_FIXED: Same-process and child Warm at or faster than baseline Warm after targeted fix (VERIFIED). Prior >20% flag was a real multi-scan regression, now closed."

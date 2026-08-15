@@ -35,7 +35,10 @@ export const DEFAULT_WRITE_DB =
 
 export const PRODUCTION_DB = 'C:/FindSeriesV5-Workspace/findseries-v5.db';
 
-/** Refuse productive DB and any E: path for FRV-40 bench DBs. */
+/** Only writable bench DBs under this directory (normalized). */
+export const BENCH_WRITE_ROOT = path.resolve('C:/Temp/FindSeries-Review-Test');
+
+/** Refuse productive DB and any E: path for FRV-40 read/perf DBs. */
 export function assertSafeBenchDb(dbPath: string): string {
   const resolved = path.resolve(dbPath);
   const lower = resolved.toLowerCase();
@@ -44,6 +47,37 @@ export function assertSafeBenchDb(dbPath: string): string {
   }
   if (/^[eE]:[\\/]/.test(resolved)) {
     throw new Error(`REFUSING E: path for FRV-40 bench DB: ${resolved}`);
+  }
+  return resolved;
+}
+
+/**
+ * Writable FRV-40 bulk/bench DB must live under C:\\Temp\\FindSeries-Review-Test\\.
+ * Prefer DEFAULT_WRITE_DB (`bench-write-copy.db`). Never unlink/rebuild without this guard.
+ * Refuses: productive DB, E:, any path outside the Temp review-test root, and the gate read DB.
+ */
+export function assertSafeBenchWriteDb(dbPath: string): string {
+  const resolved = assertSafeBenchDb(dbPath);
+  const root = BENCH_WRITE_ROOT;
+  const rootPrefix = root.toLowerCase() + path.sep;
+  const resolvedLower = resolved.toLowerCase();
+  const rel = path.relative(root, resolved);
+  const underRoot =
+    rel !== '' &&
+    !rel.startsWith('..') &&
+    !path.isAbsolute(rel) &&
+    resolvedLower.startsWith(rootPrefix);
+  if (!underRoot) {
+    throw new Error(
+      `REFUSING write DB outside ${root}: ${resolved} (allowed: files under C:\\Temp\\FindSeries-Review-Test\\)`,
+    );
+  }
+  const base = path.basename(resolved).toLowerCase();
+  const gateBase = path.basename(path.resolve(DEFAULT_PERF_DB)).toLowerCase();
+  if (base === gateBase || resolvedLower === path.resolve(DEFAULT_PERF_DB).toLowerCase()) {
+    throw new Error(
+      `REFUSING gate/read DB as write target: ${resolved} (use ${DEFAULT_WRITE_DB})`,
+    );
   }
   return resolved;
 }

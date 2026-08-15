@@ -1,15 +1,16 @@
 /**
  * FRV-40 100k+ API benchmark → docs/review-mvp/bench/frv40-results.csv
  *
- * Cold = fresh Node process + fresh SQLite connection ("fresh-process cold-ish").
- *   NOT OS disk-cold (page cache may still be warm).
- * Warm = same process, repeated after a warm-up touch.
+ * Primary (baseline-compatible, used for >20% regression gate):
+ *   one process / one SQLite connection per run_id, Cold suite → Warm suite
+ *
+ * Supplemental (optional, REVIEW_FRV40_SUPPLEMENTAL_CHILD=1):
+ *   fresh-process cold-ish via child workers — NOT comparable 1:1 to baseline CSV
  *
  *   npm run bench:frv40
- *   REVIEW_FRV40_CHILD=1 …  (internal worker)
  *
  * Read queries: gate DB (readonly).
- * Bulk writes: REVIEW_WRITE_DB_PATH only (undo after).
+ * Bulk writes: assertSafeBenchWriteDb under C:\Temp\FindSeries-Review-Test only.
  */
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
@@ -28,6 +29,7 @@ import {
   DEFAULT_MEDIA_ROOTS,
   DEFAULT_PROJECT_ID,
   assertSafeBenchDb,
+  assertSafeBenchWriteDb,
   benchDocDir,
   ensureBenchDir,
   fmtMs,
@@ -35,13 +37,13 @@ import {
   rssMb,
   stats,
   timedMs,
-  timedMsAsync,
   writeCsv,
 } from './bench-shared.js';
 import { ensureFrv40WriteDb } from './ensure-frv40-write-db.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const IS_CHILD = process.env.REVIEW_FRV40_CHILD === '1';
+const SUPPLEMENTAL_CHILD = process.env.REVIEW_FRV40_SUPPLEMENTAL_CHILD === '1';
 const RUNS = Number(process.env.REVIEW_FRV40_RUNS ?? 2);
 const ITERS = Number(process.env.REVIEW_BENCH_ITERS ?? 5);
 const RESULT_MARKER = '__FRV40_RESULT__';
@@ -149,12 +151,12 @@ function measureApi(
   iterations: number,
   fn: () => void,
 ): MetricResult {
-  if (!cold) fn(); // warm touch
+  if (!cold) fn();
   const samples: number[] = [];
   for (let i = 0; i < iterations; i++) samples.push(timedMs(fn).ms);
   const s = stats(samples);
-  console.error(
-    `  ${cold ? 'COLD-ish' : 'WARM'} ${label}: p50=${fmtMs(s.p50)} p95=${fmtMs(s.p95)} (n=${s.n})`,
+  console.log(
+    `  ${cold ? 'COLD' : 'WARM'} ${label}: p50=${fmtMs(s.p50)} p95=${fmtMs(s.p95)} (n=${s.n})`,
   );
   return {
     label,
@@ -187,28 +189,33 @@ async function thumbSample(
 
   const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), 'frv40-thumbs-'));
   const logDir = fs.mkdtempSync(path.join(os.tmpdir(), 'frv40-log-'));
+  process.env.REVIEW_THUMB_CACHE_DIR = cacheDir;
   const app = await buildServer({
     db,
-    finalizeLogDir: logDir,
-    deleteRoots: roots,
     mediaRoots: roots,
     thumbCacheDir: cacheDir,
+    logDir,
   });
+  await app.ready();
   const coldSamples: number[] = [];
   for (const id of ids) {
-    coldSamples.push(
-      (await timedMsAsync(() => app.inject({ method: 'GET', url: `/api/media/${id}/thumb?size=80` }))).ms,
-    );
+    const t0 = performance.now();
+    await app.inject({ method: 'GET', url: `/api/media/${id}/thumb` });
+    coldSamples.push(performance.now() - t0);
   }
   const warmSamples: number[] = [];
   for (const id of ids) {
-    warmSamples.push(
-      (await timedMsAsync(() => app.inject({ method: 'GET', url: `/api/media/${id}/thumb?size=80` }))).ms,
-    );
+    const t0 = performance.now();
+    await app.inject({ method: 'GET', url: `/api/media/${id}/thumb` });
+    warmSamples.push(performance.now() - t0);
   }
   await app.close();
-  fs.rmSync(cacheDir, { recursive: true, force: true });
-  fs.rmSync(logDir, { recursive: true, force: true });
+  try {
+    fs.rmSync(cacheDir, { recursive: true, force: true });
+    fs.rmSync(logDir, { recursive: true, force: true });
+  } catch {
+    /* ignore */
+  }
   return {
     cold_p50: stats(coldSamples).p50,
     warm_p50: stats(warmSamples).p50,
@@ -217,11 +224,11 @@ async function thumbSample(
   };
 }
 
-function runBulk(writeDb: ReviewDb, projectId: number, n: number): {
-  ms: number;
-  undoneMs: number;
-  restoreOk: boolean;
-} {
+function runBulk(
+  writeDb: ReviewDb,
+  projectId: number,
+  n: number,
+): { ms: number; undoneMs: number; restoreOk: boolean } {
   const ids = (
     writeDb
       .prepare(
@@ -229,29 +236,26 @@ function runBulk(writeDb: ReviewDb, projectId: number, n: number): {
       )
       .all(projectId, n) as Array<{ media_id: number }>
   ).map((r) => r.media_id);
-
-  const before = new Map<number, string>();
   const sel = writeDb.prepare(
     `SELECT status FROM media_review_status WHERE project_id=? AND media_id=?`,
   );
+  const before = new Map<number, string>();
   for (const id of ids) {
     const row = sel.get(projectId, id) as { status: string } | undefined;
     before.set(id, row?.status ?? 'SPARSE');
   }
-
   const { ms, value } = timedMs(() =>
     applyBulk(writeDb, {
       projectId,
-      action: 'set_status',
-      targetStatus: 'unsure',
       mediaIds: ids,
+      action: 'set_status',
+      targetStatus: 'reject',
       protectKeep: true,
-      source: 'bench-frv40',
+      source: 'frv40-bench',
       sessionId: 'frv40',
     }),
   );
   const undone = timedMs(() => undoBatch(writeDb, { projectId, batchId: value.batchId }));
-
   let restoreOk = true;
   for (const id of ids) {
     const row = sel.get(projectId, id) as { status: string } | undefined;
@@ -262,52 +266,39 @@ function runBulk(writeDb: ReviewDb, projectId: number, n: number): {
 }
 
 function runWorkerPhase(cold: boolean, iterations: number): ChildPayload {
-  if (!fs.existsSync(DEFAULT_GATE_DB)) {
-    throw new Error(`Gate DB missing: ${DEFAULT_GATE_DB}`);
-  }
-  // Fresh SQLite connection in this process
   const db = openReviewDb(DEFAULT_GATE_DB, { readonly: true });
   const mediaCount = (
     db.prepare(`SELECT COUNT(*) AS c FROM project_media WHERE project_id=?`).get(DEFAULT_PROJECT_ID) as {
       c: number;
     }
   ).c;
-  const categoryId = pickCategoryId(db, DEFAULT_PROJECT_ID);
-  const focusMediaId = pickFocus(db, DEFAULT_PROJECT_ID);
-  const suite = buildSuite(db, categoryId, focusMediaId);
+  const suite = buildSuite(db, pickCategoryId(db, DEFAULT_PROJECT_ID), pickFocus(db, DEFAULT_PROJECT_ID));
   const metrics: MetricResult[] = [];
   for (const s of suite) {
     metrics.push(measureApi(s.name, cold, iterations, s.fn));
   }
-  // time-to-first-grid ≈ gallery
   const gal = metrics.find((m) => m.label === 'gallery');
-  if (gal) {
-    metrics.push({
-      ...gal,
-      label: 'time_to_first_grid',
-    });
-  }
+  if (gal) metrics.push({ ...gal, label: 'time_to_first_grid' });
   db.close();
   return {
     mediaCount,
     metrics,
     note: cold
-      ? 'fresh-process cold-ish (new Node + new SQLite connection; NOT OS disk-cold)'
-      : 'warm same-process repeated',
+      ? 'supplemental fresh-process cold-ish (NOT baseline-comparable)'
+      : 'supplemental warm in fresh child (NOT baseline-comparable)',
   };
 }
 
 function spawnWorker(cold: boolean, iterations: number, runId: number): Promise<ChildPayload> {
   return new Promise((resolve, reject) => {
-    const env = {
-      ...process.env,
-      REVIEW_FRV40_CHILD: '1',
-      REVIEW_FRV40_PHASE: cold ? 'cold' : 'warm',
-      REVIEW_FRV40_ITERS: String(iterations),
-      REVIEW_FRV40_RUN_ID: String(runId),
-    };
     const child = spawn(process.execPath, ['--import', 'tsx', __filename], {
-      env,
+      env: {
+        ...process.env,
+        REVIEW_FRV40_CHILD: '1',
+        REVIEW_FRV40_PHASE: cold ? 'cold' : 'warm',
+        REVIEW_FRV40_ITERS: String(iterations),
+        REVIEW_FRV40_RUN_ID: String(runId),
+      },
       cwd: path.dirname(__filename),
       stdio: ['ignore', 'pipe', 'inherit'],
     });
@@ -326,14 +317,10 @@ function spawnWorker(cold: boolean, iterations: number, runId: number): Promise<
         .map((l) => l.trim())
         .find((l) => l.startsWith(RESULT_MARKER));
       if (!line) {
-        reject(new Error(`FRV-40 child missing ${RESULT_MARKER} in stdout`));
+        reject(new Error(`FRV-40 child missing ${RESULT_MARKER}`));
         return;
       }
-      try {
-        resolve(JSON.parse(line.slice(RESULT_MARKER.length)) as ChildPayload);
-      } catch (e) {
-        reject(e);
-      }
+      resolve(JSON.parse(line.slice(RESULT_MARKER.length)) as ChildPayload);
     });
   });
 }
@@ -341,9 +328,7 @@ function spawnWorker(cold: boolean, iterations: number, runId: number): Promise<
 async function runChildMain(): Promise<void> {
   const cold = process.env.REVIEW_FRV40_PHASE !== 'warm';
   const iterations = Number(process.env.REVIEW_FRV40_ITERS ?? ITERS);
-  const payload = runWorkerPhase(cold, iterations);
-  // Only marker on stdout so parent can parse cleanly
-  process.stdout.write(RESULT_MARKER + JSON.stringify(payload) + '\n');
+  process.stdout.write(RESULT_MARKER + JSON.stringify(runWorkerPhase(cold, iterations)) + '\n');
 }
 
 function pushMetricRows(
@@ -353,6 +338,7 @@ function pushMetricRows(
   mediaCount: number,
   metrics: MetricResult[],
   note: string,
+  coldDefinition: string,
 ): void {
   for (const m of metrics) {
     rows.push({
@@ -367,9 +353,9 @@ function pushMetricRows(
       rss_mb: +m.rss_mb.toFixed(1),
       note:
         m.label === 'time_to_first_grid'
-          ? `API proxy ≈ gallery limit 120 (browser first-grid is authoritative; see frv40-browser.csv); ${note}`
+          ? `API proxy ≈ gallery limit 120 (browser first-grid is authoritative); ${note}`
           : note,
-      cold_definition: cache === 'Cold' ? 'fresh-process cold-ish' : cache === 'Warm' ? 'same-process' : '',
+      cold_definition: coldDefinition,
     });
   }
 }
@@ -382,53 +368,50 @@ async function runParentMain(): Promise<void> {
     process.exit(2);
   }
 
-  const probe = openReviewDb(DEFAULT_GATE_DB, { readonly: true });
+  const readDb = openReviewDb(DEFAULT_GATE_DB, { readonly: true });
   const mediaCount = (
-    probe.prepare(`SELECT COUNT(*) AS c FROM project_media WHERE project_id=?`).get(DEFAULT_PROJECT_ID) as {
+    readDb.prepare(`SELECT COUNT(*) AS c FROM project_media WHERE project_id=?`).get(DEFAULT_PROJECT_ID) as {
       c: number;
     }
   ).c;
-  probe.close();
   console.log(`project_media count=${mediaCount}`);
   if (mediaCount < 100_000) {
     console.error(`Need >=100k media; got ${mediaCount}`);
     process.exit(3);
   }
 
+  const suite = buildSuite(
+    readDb,
+    pickCategoryId(readDb, DEFAULT_PROJECT_ID),
+    pickFocus(readDb, DEFAULT_PROJECT_ID),
+  );
+
   const rows: Row[] = [];
   const regressionMetrics: Array<{ metric: string; p50: number; p95: number }> = [];
 
   for (let runId = 1; runId <= RUNS; runId++) {
-    console.log(`\n=== run_id=${runId} (parent RSS=${rssMb().toFixed(1)}MB) ===`);
-
-    // Cold: dedicated child process (fresh Node + fresh SQLite)
-    const coldIters = Math.max(3, Math.min(ITERS, 5));
-    console.log(`Spawning cold-ish child (iters=${coldIters})…`);
-    const coldPayload = await spawnWorker(true, coldIters, runId);
-    pushMetricRows(
-      rows,
-      runId,
-      'Cold',
-      coldPayload.mediaCount,
-      coldPayload.metrics,
-      coldPayload.note,
-    );
-
-    // Warm: dedicated child that warms then repeats (same process within child)
-    console.log(`Spawning warm child (iters=${ITERS})…`);
-    const warmPayload = await spawnWorker(false, ITERS, runId);
-    pushMetricRows(
-      rows,
-      runId,
-      'Warm',
-      warmPayload.mediaCount,
-      warmPayload.metrics,
-      warmPayload.note,
-    );
-    if (runId === RUNS) {
-      for (const m of warmPayload.metrics) {
-        if (m.label === 'time_to_first_grid') continue;
-        regressionMetrics.push({ metric: m.label, p50: m.p50, p95: m.p95 });
+    console.log(`\n=== run_id=${runId} PRIMARY baseline-compatible (RSS=${rssMb().toFixed(1)}MB) ===`);
+    for (const cold of [true, false]) {
+      const tag = cold ? 'Cold' : 'Warm';
+      const note = cold
+        ? 'baseline-compatible: same process/connection; Cold suite first'
+        : 'baseline-compatible: same process/connection after Cold suite';
+      const coldDef = cold
+        ? 'same-process suite (baseline-compatible)'
+        : 'same-process suite after Cold (baseline-compatible)';
+      console.log(`--- ${tag} ---`);
+      const metrics: MetricResult[] = [];
+      for (const s of suite) {
+        metrics.push(measureApi(s.name, cold, ITERS, s.fn));
+      }
+      const gal = metrics.find((m) => m.label === 'gallery');
+      if (gal) metrics.push({ ...gal, label: 'time_to_first_grid' });
+      pushMetricRows(rows, runId, tag, mediaCount, metrics, note, coldDef);
+      if (runId === RUNS && !cold) {
+        for (const m of metrics) {
+          if (m.label === 'time_to_first_grid') continue;
+          regressionMetrics.push({ metric: m.label, p50: m.p50, p95: m.p95 });
+        }
       }
     }
 
@@ -442,16 +425,39 @@ async function runParentMain(): Promise<void> {
       n: 0,
       media_count: mediaCount,
       rss_mb: +rssMb().toFixed(1),
-      note: 'See frv40-browser.csv / FRV40_BROWSER.md / FRV40_PERFORMANCE.md (Playwright on Real-DB)',
+      note: 'See frv40-browser.csv / FRV40_BROWSER.md / FRV40_PERFORMANCE.md',
       cold_definition: '',
     });
   }
 
-  // Thumbnail sample in parent (fresh connection)
+  if (SUPPLEMENTAL_CHILD) {
+    console.log('\n=== SUPPLEMENTAL fresh-process children (not used for baseline regression) ===');
+    for (let runId = 1; runId <= RUNS; runId++) {
+      const coldPayload = await spawnWorker(true, ITERS, runId);
+      pushMetricRows(
+        rows,
+        runId,
+        'Cold',
+        coldPayload.mediaCount,
+        coldPayload.metrics.map((m) => ({ ...m, label: `supp_${m.label}` })),
+        coldPayload.note,
+        'supplemental fresh-process',
+      );
+      const warmPayload = await spawnWorker(false, ITERS, runId);
+      pushMetricRows(
+        rows,
+        runId,
+        'Warm',
+        warmPayload.mediaCount,
+        warmPayload.metrics.map((m) => ({ ...m, label: `supp_${m.label}` })),
+        warmPayload.note,
+        'supplemental fresh-process',
+      );
+    }
+  }
+
   console.log('\nThumbnail sample…');
-  const thumbDb = openReviewDb(DEFAULT_GATE_DB, { readonly: true });
-  const thumbs = await thumbSample(thumbDb, DEFAULT_PROJECT_ID);
-  thumbDb.close();
+  const thumbs = await thumbSample(readDb, DEFAULT_PROJECT_ID);
   if (thumbs) {
     rows.push({
       run_id: 1,
@@ -495,10 +501,11 @@ async function runParentMain(): Promise<void> {
     });
   }
 
-  // Bulk on compact C: write copy (≥100k project_media); never E: / never production
+  readDb.close();
+
   console.log('\nEnsuring C: write DB…');
   const writePath = ensureFrv40WriteDb();
-  assertSafeBenchDb(writePath);
+  assertSafeBenchWriteDb(writePath);
   console.log(`\nBulk writes on ${writePath}`);
   const writeDb = openReviewDb(writePath, { readonly: false });
   let bulkRestoreFailed = false;
@@ -549,15 +556,15 @@ async function runParentMain(): Promise<void> {
 
   const flags = regressionFlags(baselineCsv, regressionMetrics, 0.2);
   if (flags.length) {
-    console.log('\nRegression check:');
+    console.log('\nRegression check (baseline-compatible Warm only):');
     for (const f of flags) console.log(' ', f);
   } else {
-    console.log('\nRegression check: no baseline or no >20% regressions');
+    console.log('\nRegression check: no >20% regressions vs baseline (method-matched Warm)');
   }
 
   console.log(`Wrote ${outCsv}`);
   console.log(
-    'Cold definition: fresh-process cold-ish = new Node process + new SQLite connection (NOT OS disk-cold).',
+    'Primary Cold/Warm = same-process suite (baseline-compatible). Supplemental child: REVIEW_FRV40_SUPPLEMENTAL_CHILD=1.',
   );
 }
 

@@ -1,134 +1,125 @@
 # FRV-40 — Performance Gate (100k+)
 
-**Status:** PASS WITH DEVIATION  
+**Status:** Testing (Done = nein)  
 **Date:** 2026-08-15  
 **Branch:** `review-mvp`  
-**Review-base / Start-HEAD:** `d5013ba8c4984ec8f9d547efc8fd47c763d8f3de`  
-**Scope:** Technischer, reproduzierbarer Performance-Gate (kein manueller UI-/UX-Test; das ist FRV-47).
+**Review-base:** `d5013ba8c4984ec8f9d547efc8fd47c763d8f3de`  
+**Scope:** Technischer Performance-Gate (kein manueller UI-/UX-Test; FRV-47).
 
 ## Commands
 
 ```bash
-npm run test:perf:frv40   # API + Browser (builds api/web for browser)
-# oder einzeln:
-npm run bench:frv40
-npm run bench:frv40:browser
+npm run test:perf:frv40
+npm run bench:frv40:groups-isolate
 ```
 
-Nicht in GitHub CI erzwingen (Real-DB fehlt dort). Normale `test:gate` / `test:e2e` bleiben CI-fähig.
+Normale `test:gate` / `test:e2e` bleiben CI-fähig. Perf nicht in GitHub CI erzwingen.
 
 ## Hardware / Pfade
 
 | Rolle | Pfad |
 |---|---|
-| Produktiv (nie anfassen) | `C:\FindSeriesV5-Workspace\findseries-v5.db` |
-| Read / Real-DB Gate | `C:\Temp\FindSeries-Review-Test\findseries-v5-phase1-gate.db` |
-| Write / Bulk (kompakt, C: only) | `C:\Temp\FindSeries-Review-Test\bench-write-copy.db` |
-| Media roots (Thumbnails, optional) | `E:\Temp\FindSeriesV5-Workspace\Media` (nur Lesen) |
+| Produktiv (nie) | `C:\FindSeriesV5-Workspace\findseries-v5.db` |
+| Read / Gate | `C:\Temp\FindSeries-Review-Test\findseries-v5-phase1-gate.db` |
+| Write / Bulk | `C:\Temp\FindSeries-Review-Test\bench-write-copy.db` |
 
-- **E: ist kein writable SQLite-Benchmark-Pfad** (`assertSafeBenchDb` verweigert `E:` und Produktiv-DB).
-- Write-DB: kompakte Extraktion (≥100k `project_media` Project 7 + Review-Tabellen + Migrationen 100–105), **keine** zweite ~20‑GB-Kopie.
-- Medienzahl (Project 7): **184 991**
+- Write nur unter `C:\Temp\FindSeries-Review-Test\` via `assertSafeBenchWriteDb` (vor unlink/rebuild).
+- Medienzahl Project 7: **184 991**
+- Baseline CSV: **unverändert** (`frv40-results.baseline.csv`)
 
-## Methodik
+## Methodik (zwei Ebenen)
 
-### API (`bench-frv40.ts` → `frv40-results.csv`)
+1. **Baseline-compatible (Primary):** ein Prozess / eine Connection, Cold-Suite → Warm-Suite — Regression-Gate gegen Baseline-CSV  
+2. **Supplemental:** optional `REVIEW_FRV40_SUPPLEMENTAL_CHILD=1` (fresh-process) — nicht 1:1 gegen Baseline flaggen  
+3. **Groups-Isolate:** `bench:frv40:groups-isolate` Method A vs B
 
-- 2 vollständige Runs × Cold + Warm
-- Cold = **fresh-process cold-ish** (neuer Node-Prozess + neue SQLite-Connection; **nicht** OS-Disk-Cold)
-- Warm = same-process Wiederholung
-- p50 / p95 (n=5) für: gallery, groups_provenance, category_subtree, category_gallery, focus, facets, status_counts
-- `time_to_first_grid` in der CSV = **API-Proxy** (gallery limit 120) — nur Hinweis; **Browser-Metrik ist maßgeblich**
-- Thumbnail cold/warm (Prozess-Cache)
-- Bulk 1 / 100 / 10 000: `protectKeep=true`, Status-Snapshot → apply → undo → SQL-Restore-Check (`restoreOk`)
-- RSS nach Metriken
+## A. groups_provenance — Isolation & Fix
 
-### Browser (`bench-frv40-browser.ts` → `frv40-browser.csv` / `FRV40_BROWSER.md`)
+### Vor Fix (committed multi-scan path)
 
-- Playwright Chromium headless + FRV-46 Stack (static `dist` + buffered `/api` Proxy)
-- Thumbnails: SVG-Placeholder (kein E:-Media-I/O; Gallery-APIs trotzdem Real-DB)
-- **time_to_first_grid_ms:** Navigation → erstes `[data-testid^="thumb-"]` sichtbar
-- Scroll: programmatisch im Gallery-Scroll-Container; rAF frame p95; Long Tasks (>50 ms) falls verfügbar; DOM-Nodes / Thumb-Count; JS heap wenn `performance.memory` da
+| Method | Warm p50 | vs Baseline 1490 ms |
+|---|---:|---:|
+| A same-process | ~4032 ms | **+170 %** |
+| B child (frühere Runs) | ~2.5–3.2 s | **>+70 %** |
 
-### Baseline
+**Klassifikation: VERIFIED_REAL** — beide Methodiken >20 % langsamer.
 
-| Datei | Rolle |
+### Ursache (VERIFIED)
+
+Teilmessungen: Key ≈1.2 s + UI-Stats ≈1.2 s + Progress-Stats ≈1.4 s → volles `queryGroups` ≈4.1–4.5 s.  
+P0: bei UI ⊂ 4 Statusen liefen mehrere schwere Discoveries-Scans.
+
+### Fix
+
+Ein Aggregat-Pass (`groups.ts`): Scan über alle 4 Status bei Progress-Bedarf; `visible_total` aus UI-Spalten; `progressStatusCounts` aus denselben Daten.
+
+### Nach Fix (Isolate)
+
+| Method | Warm p50 | Δ vs Baseline |
+|---|---:|---:|
+| A | ~1045–1400 ms | **≤0 / leicht schneller** |
+| B | ~963–1172 ms | schneller |
+
+**Klassifikation: VERIFIED_FIXED** — Groups-Flag geschlossen. Primary-Suite: `groups_provenance` **nicht** mehr in Regression-Flags.
+
+## B. Weitere API-Metriken (Primary Warm Run 2)
+
+| Metric | Baseline p50 | Current p50 | Flag |
+|---|---:|---:|---|
+| gallery | 570.9 | 930.6 | >20 % |
+| groups_provenance | 1490.4 | 1431.0 | ok |
+| category_subtree | 351.5 | 540.8 | >20 % |
+| category_gallery | 1478.2 | 2416.9 | >20 % |
+| focus | 1309.4 | 2538.1 | >20 % |
+| facets | 1553.6 | 2684.1 | >20 % |
+| status_counts | 5.0 | 6.4 | >20 % |
+
+### Einordnung
+
+| Aussage | Label |
 |---|---|
-| `docs/review-mvp/bench/frv40-results.baseline.csv` | **unverändert** (Regression-Referenz) |
-| `docs/review-mvp/bench/frv40-results.csv` | aktuelle Messung |
-| `docs/review-mvp/bench/frv40-browser.csv` | Browser-Messung |
+| `gallery.ts` / Default-Filter-Pfad seit Baseline-Commit unverändert (`git diff c54ae4b..HEAD`) | VERIFIED |
+| Allein-Messungen gallery/focus/facets ebenfalls deutlich über Baseline | VERIFIED |
+| Konkrete Code-Ursache für die absolute Elevation | **UNRESOLVED** |
+| Host/Runtime-Faktor als Erklärung | INFERRED (nicht belegt) |
 
-## API Ergebnisse (Auszug, Run 2 Warm p50 sofern nicht anders)
+Weil **UNRESOLVED >20 %** außerhalb Groups verbleibt → FRV-40 bleibt **Testing / Done = nein** (kein „Methodik/Rauschen“-Abwinken).
 
-| Metric | Baseline Warm p50 | Current Warm p50 | Δ |
-|---|---:|---:|---:|
-| gallery | 570.9 | 651.1 | +14 % |
-| groups_provenance | 1490.4 | 2838.5 | **+90 %** |
-| category_subtree | 351.5 | 378.1 | +8 % |
-| category_gallery | 1478.2 | 1666.6 | +13 % |
-| focus | 1309.4 | 1494.8 | +14 % |
-| facets | 1507.5 | 1686.2 | +12 % |
-| status_counts | 4.9 | 5.5 | +12 % |
+Keine spekulative Optimierung dieser Pfade in diesem Fixloop.
 
-Cold (fresh-process) Run 2 p50: gallery 655 · groups_provenance 2883 · category_subtree 394 · category_gallery 1632 · focus 1458 · facets 1748 · status_counts 5.3
+## C. Write-DB Safety
 
-### Thumbnail / Bulk / Memory (API)
+- `assertSafeBenchWriteDb()` vor unlink/rebuild  
+- Tests: PASS Temp-Write; FAIL Produktiv / Users / E: / andere C: / Gate-DB  
+- Bulk: `source: 'frv40-bench'`; restoreOk=true (1 / 100 / 10 000)
 
-| Metric | Wert |
-|---|---|
-| thumbnail Cold | 31.3 ms (n=20) |
-| thumbnail Warm | 0.9 ms |
-| bulk 1 | 3.9 ms; undo 0.8 ms; restoreOk=true |
-| bulk 100 | 2.6 ms; undo 2.6 ms; restoreOk=true |
-| bulk 10 000 | 280 ms; undo 253 ms; restoreOk=true |
-| RSS (API peak region) | ~110–140 MB |
-
-Bulk läuft ausschließlich auf der C:-kompakten Write-DB; Gate-DB bleibt unverschmutzt.
-
-## Browser Ergebnisse
+## D. Browser (sachlich, keine UI-Optimierung)
 
 | Metric | Cold | Warm |
 |---|---:|---:|
-| time_to_first_grid_ms | 6206 | 8616 |
-| Visible thumbs (DOM) | 54 | 54 |
+| time_to_first_grid_ms | 8745 | 12871 |
+| Visible thumbs | 54 | 54 |
 | DOM nodes after scroll | — | 8802 |
-| Long tasks count | 0 | 0 |
-| rAF frame p95 (ms) | — | 16.7 |
-| JS heap (MB) | — | 12.1 |
-| UI Ergebnis-Total | 184991 | 184991 |
+| Long tasks | 1 | 1 |
+| rAF p95 (ms) | — | 16.7 |
 
-Warm > Cold hier ist **Laufvarianz** (zweiter Page-Load / Stack-Druck), kein Stall. Beide Läufe: First Grid in Sekunden, nicht Minuten; Virtualisierung bounded (54 Thumbs ≪ 184 991).
-
-## >20 %-Regressionen vs Baseline
-
-| Flag | Einordnung | Begründung |
-|---|---|---|
-| `groups_provenance` Warm p50 ~1490 → ~2838 ms | **B + D** (Methodik / Rauschen), **nicht A** | Kein FRV-46-Codepfad in Groups-Provenance; Cold-Definition jetzt „fresh-process“ dokumentiert; Absolute ~3 s, kein Minuten-Stall. Kein klarer P0-Bottleneck → **keine Optimierung in FRV-40**. |
-| Übrige API-Metriken | unter 20 % oder nahe Rauschen | Gallery/Focus/Facets/Category ~8–14 % |
-
-Nicht mit FRV-46-CSV mischen (andere Endpoints/Semantik Category-Counts).
-
-## Praxisnahe technische Bewertung
-
-| Kriterium | Urteil |
-|---|---|
-| Kein minutenlanger API-/UI-Stall | PASS |
-| First Grid interaktiv nutzbar (Browser) | PASS (~6–9 s auf Real-DB Stack) |
-| Category-Expand nach FRV-46 weiterhin schnell | PASS (subtree ~0.4 s; separate FRV-46 Evidence) |
-| Scroll DOM bounded | PASS (54 thumbs / ~8.8k nodes) |
-| Bulk 10k praktikabel | PASS (~280 ms + Undo + Restore) |
-| Memory Scroll ungebremst? | PASS (JS heap ~12 MB; API RSS bounded) |
+First Grid **~8–13 s** — dokumentiert, nicht als „schnell“ gewertet. UX → FRV-47.
 
 ## Verdict
 
-**PASS WITH DEVIATION**
-
-Abweichung: dokumentiertes `groups_provenance` >20 %-Flag vs Baseline, eingeordnet als Methodik/Rauschen (nicht ungeklärte P0-Regression A). Technischer DoD erfüllt → Notion **Done**.
+| | |
+|---|---|
+| Groups P0 | **behoben** (VERIFIED_FIXED) |
+| Write-DB Guard | **PASS** |
+| Bulk restore | **PASS** |
+| Baseline CSV | **unverändert** |
+| Sonstige >20 % API | **UNRESOLVED** → Testing |
+| **Done** | **nein** |
 
 ## Artefakte
 
-- `docs/review-mvp/bench/frv40-results.csv`
-- `docs/review-mvp/bench/frv40-results.baseline.csv` (immutable)
-- `docs/review-mvp/bench/frv40-browser.csv`
-- `docs/review-mvp/bench/FRV40_BROWSER.md`
-- Scripts: `bench-frv40.ts`, `bench-frv40-browser.ts`, `ensure-frv40-write-db.ts`, `bench-shared.ts` (C:-only write)
+- `docs/review-mvp/bench/frv40-results.csv` / `.baseline.csv` (immutable)
+- `docs/review-mvp/bench/frv40-groups-isolate.csv` / `FRV40_GROUPS_ISOLATE.md`
+- `docs/review-mvp/bench/frv40-browser.csv` / `FRV40_BROWSER.md`
+- Scripts: `bench-frv40.ts`, `bench-frv40-groups-isolate.ts`, `ensure-frv40-write-db.ts`, `bench-shared.ts`
+- Fix: `review/api/src/services/groups.ts`

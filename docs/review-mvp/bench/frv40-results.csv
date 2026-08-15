@@ -1,40 +1,40 @@
 run_id,cache,metric,p50_ms,p95_ms,mean_ms,n,media_count,rss_mb,note,cold_definition
-1,Cold,gallery,791.63,848.63,804.08,5,184991,109.2,fresh-process cold-ish (new Node + new SQLite connection; NOT OS disk-cold),fresh-process cold-ish
-1,Cold,groups_provenance,3271.43,3521.59,3342.32,5,184991,103.2,fresh-process cold-ish (new Node + new SQLite connection; NOT OS disk-cold),fresh-process cold-ish
-1,Cold,category_subtree,454.94,485.74,455.02,5,184991,103.8,fresh-process cold-ish (new Node + new SQLite connection; NOT OS disk-cold),fresh-process cold-ish
-1,Cold,category_gallery,1940.78,1962.37,1933.23,5,184991,104.2,fresh-process cold-ish (new Node + new SQLite connection; NOT OS disk-cold),fresh-process cold-ish
-1,Cold,focus,1774.82,1783.07,1762.73,5,184991,104.3,fresh-process cold-ish (new Node + new SQLite connection; NOT OS disk-cold),fresh-process cold-ish
-1,Cold,facets,1967.53,2208.12,2019.6,5,184991,106.2,fresh-process cold-ish (new Node + new SQLite connection; NOT OS disk-cold),fresh-process cold-ish
-1,Cold,status_counts,6.16,8.25,6.68,5,184991,106.2,fresh-process cold-ish (new Node + new SQLite connection; NOT OS disk-cold),fresh-process cold-ish
-1,Cold,time_to_first_grid,791.63,848.63,804.08,5,184991,109.2,API proxy ≈ gallery limit 120 (browser first-grid is authoritative; see frv40-browser.csv); fresh-process cold-ish (new Node + new SQLite connection; NOT OS disk-cold),fresh-process cold-ish
-1,Warm,gallery,764.24,766.49,762.11,5,184991,107.1,warm same-process repeated,same-process
-1,Warm,groups_provenance,3240.25,3589.76,3299.68,5,184991,101.3,warm same-process repeated,same-process
-1,Warm,category_subtree,444.95,455.96,446.06,5,184991,102,warm same-process repeated,same-process
-1,Warm,category_gallery,1686.62,1902.91,1733.77,5,184991,102.3,warm same-process repeated,same-process
-1,Warm,focus,1486.63,1509.87,1485.63,5,184991,102.4,warm same-process repeated,same-process
-1,Warm,facets,1691.04,1790.78,1717.79,5,184991,104.6,warm same-process repeated,same-process
-1,Warm,status_counts,5.58,5.71,5.53,5,184991,104.6,warm same-process repeated,same-process
-1,Warm,time_to_first_grid,764.24,766.49,762.11,5,184991,107.1,API proxy ≈ gallery limit 120 (browser first-grid is authoritative; see frv40-browser.csv); warm same-process repeated,same-process
-1,N/A,scroll_long_tasks,,,,0,184991,77.3,See frv40-browser.csv / FRV40_BROWSER.md / FRV40_PERFORMANCE.md (Playwright on Real-DB),
-2,Cold,gallery,655.04,717.83,664.81,5,184991,107.5,fresh-process cold-ish (new Node + new SQLite connection; NOT OS disk-cold),fresh-process cold-ish
-2,Cold,groups_provenance,2882.83,3316.43,3019.76,5,184991,101.5,fresh-process cold-ish (new Node + new SQLite connection; NOT OS disk-cold),fresh-process cold-ish
-2,Cold,category_subtree,393.97,394.75,390.28,5,184991,102,fresh-process cold-ish (new Node + new SQLite connection; NOT OS disk-cold),fresh-process cold-ish
-2,Cold,category_gallery,1631.65,1674.35,1642.65,5,184991,102.4,fresh-process cold-ish (new Node + new SQLite connection; NOT OS disk-cold),fresh-process cold-ish
-2,Cold,focus,1458.3,1519.25,1471.21,5,184991,102.5,fresh-process cold-ish (new Node + new SQLite connection; NOT OS disk-cold),fresh-process cold-ish
-2,Cold,facets,1748.21,1801.4,1744.5,5,184991,104.7,fresh-process cold-ish (new Node + new SQLite connection; NOT OS disk-cold),fresh-process cold-ish
-2,Cold,status_counts,5.27,7.59,5.83,5,184991,104.7,fresh-process cold-ish (new Node + new SQLite connection; NOT OS disk-cold),fresh-process cold-ish
-2,Cold,time_to_first_grid,655.04,717.83,664.81,5,184991,107.5,API proxy ≈ gallery limit 120 (browser first-grid is authoritative; see frv40-browser.csv); fresh-process cold-ish (new Node + new SQLite connection; NOT OS disk-cold),fresh-process cold-ish
-2,Warm,gallery,651.1,685.77,653.97,5,184991,107.5,warm same-process repeated,same-process
-2,Warm,groups_provenance,2838.45,2907.9,2855.79,5,184991,102.6,warm same-process repeated,same-process
-2,Warm,category_subtree,378.11,403.13,384.11,5,184991,103.1,warm same-process repeated,same-process
-2,Warm,category_gallery,1666.57,1683.02,1664.75,5,184991,103.6,warm same-process repeated,same-process
-2,Warm,focus,1494.78,1581.79,1511.7,5,184991,103.6,warm same-process repeated,same-process
-2,Warm,facets,1686.16,1697.58,1682.55,5,184991,105.1,warm same-process repeated,same-process
-2,Warm,status_counts,5.51,5.65,5.49,5,184991,105.1,warm same-process repeated,same-process
-2,Warm,time_to_first_grid,651.1,685.77,653.97,5,184991,107.5,API proxy ≈ gallery limit 120 (browser first-grid is authoritative; see frv40-browser.csv); warm same-process repeated,same-process
-2,N/A,scroll_long_tasks,,,,0,184991,77.6,See frv40-browser.csv / FRV40_BROWSER.md / FRV40_PERFORMANCE.md (Playwright on Real-DB),
-1,Cold,thumbnail,31.32,,,20,184991,118.3,ok,empty thumb cache in process
-1,Warm,thumbnail,0.88,,,20,184991,118.3,ok,same-process
-1,N/A,bulk_1,3.85,3.85,3.85,1,184991,119.1,undo_ms=0.8; restoreOk=true; db=C:compact,
-1,N/A,bulk_100,2.64,2.64,2.64,100,184991,119.3,undo_ms=2.6; restoreOk=true; db=C:compact,
-1,N/A,bulk_10000,280.45,280.45,280.45,10000,184991,140.8,undo_ms=252.6; restoreOk=true; db=C:compact,
+1,Cold,gallery,1038.31,1060.19,1031.79,5,184991,109.5,baseline-compatible: same process/connection; Cold suite first,same-process suite (baseline-compatible)
+1,Cold,groups_provenance,1395.12,1442.01,1311.91,5,184991,103.2,baseline-compatible: same process/connection; Cold suite first,same-process suite (baseline-compatible)
+1,Cold,category_subtree,616.71,767.88,596.03,5,184991,103.8,baseline-compatible: same process/connection; Cold suite first,same-process suite (baseline-compatible)
+1,Cold,category_gallery,2470.48,3017.9,2642.88,5,184991,104.4,baseline-compatible: same process/connection; Cold suite first,same-process suite (baseline-compatible)
+1,Cold,focus,2371.07,2447.54,2278.74,5,184991,104.4,baseline-compatible: same process/connection; Cold suite first,same-process suite (baseline-compatible)
+1,Cold,facets,2224.83,2685.21,2273.13,5,184991,106.1,baseline-compatible: same process/connection; Cold suite first,same-process suite (baseline-compatible)
+1,Cold,status_counts,8.39,9.43,8.08,5,184991,106.1,baseline-compatible: same process/connection; Cold suite first,same-process suite (baseline-compatible)
+1,Cold,time_to_first_grid,1038.31,1060.19,1031.79,5,184991,109.5,API proxy ≈ gallery limit 120 (browser first-grid is authoritative); baseline-compatible: same process/connection; Cold suite first,same-process suite (baseline-compatible)
+1,Warm,gallery,787.16,932.11,827.8,5,184991,105.3,baseline-compatible: same process/connection after Cold suite,same-process suite after Cold (baseline-compatible)
+1,Warm,groups_provenance,1052.39,1305.38,1099.52,5,184991,104.9,baseline-compatible: same process/connection after Cold suite,same-process suite after Cold (baseline-compatible)
+1,Warm,category_subtree,513.65,581.68,529.64,5,184991,105.6,baseline-compatible: same process/connection after Cold suite,same-process suite after Cold (baseline-compatible)
+1,Warm,category_gallery,2246.42,2691.37,2358.93,5,184991,105.9,baseline-compatible: same process/connection after Cold suite,same-process suite after Cold (baseline-compatible)
+1,Warm,focus,1779.85,2031.15,1803.04,5,184991,105.9,baseline-compatible: same process/connection after Cold suite,same-process suite after Cold (baseline-compatible)
+1,Warm,facets,2431.8,2719.92,2477.08,5,184991,107.7,baseline-compatible: same process/connection after Cold suite,same-process suite after Cold (baseline-compatible)
+1,Warm,status_counts,6.01,7.38,6.29,5,184991,107.7,baseline-compatible: same process/connection after Cold suite,same-process suite after Cold (baseline-compatible)
+1,Warm,time_to_first_grid,787.16,932.11,827.8,5,184991,105.3,API proxy ≈ gallery limit 120 (browser first-grid is authoritative); baseline-compatible: same process/connection after Cold suite,same-process suite after Cold (baseline-compatible)
+1,N/A,scroll_long_tasks,,,,0,184991,107.8,See frv40-browser.csv / FRV40_BROWSER.md / FRV40_PERFORMANCE.md,
+2,Cold,gallery,972.37,1051.49,988,5,184991,108.1,baseline-compatible: same process/connection; Cold suite first,same-process suite (baseline-compatible)
+2,Cold,groups_provenance,1517.89,1573.5,1520.49,5,184991,107.1,baseline-compatible: same process/connection; Cold suite first,same-process suite (baseline-compatible)
+2,Cold,category_subtree,524.67,569.94,527.25,5,184991,107.4,baseline-compatible: same process/connection; Cold suite first,same-process suite (baseline-compatible)
+2,Cold,category_gallery,2442.81,2477.37,2445.31,5,184991,106.9,baseline-compatible: same process/connection; Cold suite first,same-process suite (baseline-compatible)
+2,Cold,focus,2292.56,2536.11,2369.03,5,184991,107.1,baseline-compatible: same process/connection; Cold suite first,same-process suite (baseline-compatible)
+2,Cold,facets,2617.11,2671.23,2572.77,5,184991,108.6,baseline-compatible: same process/connection; Cold suite first,same-process suite (baseline-compatible)
+2,Cold,status_counts,6.23,9.17,6.99,5,184991,108.6,baseline-compatible: same process/connection; Cold suite first,same-process suite (baseline-compatible)
+2,Cold,time_to_first_grid,972.37,1051.49,988,5,184991,108.1,API proxy ≈ gallery limit 120 (browser first-grid is authoritative); baseline-compatible: same process/connection; Cold suite first,same-process suite (baseline-compatible)
+2,Warm,gallery,930.56,978.63,931.11,5,184991,105.5,baseline-compatible: same process/connection after Cold suite,same-process suite after Cold (baseline-compatible)
+2,Warm,groups_provenance,1431.03,1546.39,1445.73,5,184991,107.3,baseline-compatible: same process/connection after Cold suite,same-process suite after Cold (baseline-compatible)
+2,Warm,category_subtree,540.84,578.51,530.91,5,184991,107.6,baseline-compatible: same process/connection after Cold suite,same-process suite after Cold (baseline-compatible)
+2,Warm,category_gallery,2416.87,2492.21,2420.7,5,184991,107.9,baseline-compatible: same process/connection after Cold suite,same-process suite after Cold (baseline-compatible)
+2,Warm,focus,2538.05,2977.72,2607.29,5,184991,108,baseline-compatible: same process/connection after Cold suite,same-process suite after Cold (baseline-compatible)
+2,Warm,facets,2684.08,2884.7,2680.24,5,184991,108.4,baseline-compatible: same process/connection after Cold suite,same-process suite after Cold (baseline-compatible)
+2,Warm,status_counts,6.41,6.69,6.43,5,184991,108.4,baseline-compatible: same process/connection after Cold suite,same-process suite after Cold (baseline-compatible)
+2,Warm,time_to_first_grid,930.56,978.63,931.11,5,184991,105.5,API proxy ≈ gallery limit 120 (browser first-grid is authoritative); baseline-compatible: same process/connection after Cold suite,same-process suite after Cold (baseline-compatible)
+2,N/A,scroll_long_tasks,,,,0,184991,108.4,See frv40-browser.csv / FRV40_BROWSER.md / FRV40_PERFORMANCE.md,
+1,Cold,thumbnail,32.71,,,20,184991,143,ok,empty thumb cache in process
+1,Warm,thumbnail,1.39,,,20,184991,143,ok,same-process
+1,N/A,bulk_1,8.3,8.3,8.3,1,184991,127.8,undo_ms=7.6; restoreOk=true; db=C:compact,
+1,N/A,bulk_100,3.96,3.96,3.96,100,184991,128,undo_ms=6.6; restoreOk=true; db=C:compact,
+1,N/A,bulk_10000,383.86,383.86,383.86,10000,184991,144.9,undo_ms=341.8; restoreOk=true; db=C:compact,

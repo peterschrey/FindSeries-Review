@@ -1,6 +1,6 @@
 # FRV-40 Browser Benchmark (Real-DB)
 
-**Date:** 2026-08-15T17:03:58.876Z
+**Date:** 2026-08-15T17:59:10.089Z
 **DB:** `C:\Temp\FindSeries-Review-Test\findseries-v5-phase1-gate.db` (C: gate copy; not production)
 **Project:** 7
 **Result total (UI):** Cold 184991 · Warm 184991
@@ -10,13 +10,13 @@
 
 | Metric | Cold | Warm |
 |---|---:|---:|
-| time_to_first_grid_ms | 6205.6 | 8616.1 |
+| time_to_first_grid_ms | 8745.1 | 12871.3 |
 | Visible thumbs in DOM | 54 | 54 |
 | DOM nodes (after scroll) | — | 8802 |
-| Long tasks (count) | 0 | 0 |
-| Long tasks (max ms) | 0.0 | 0.0 |
+| Long tasks (count) | 1 | 1 |
+| Long tasks (max ms) | 53.0 | 54.0 |
 | rAF frame p95 (ms) | — | 16.7 |
-| JS heap used (MB) | — | 12.1 |
+| JS heap used (MB) | — | 15.4 |
 
 ## Acceptance checks
 
