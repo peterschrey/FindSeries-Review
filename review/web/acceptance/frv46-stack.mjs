@@ -270,8 +270,6 @@ export async function startFrv46Stack() {
       REVIEW_DELETE_ROOTS: '',
       // Writable — required for range reject + undo
       REVIEW_DB_READONLY: '0',
-      // Avoid 1000+ live category counts stalling the API during Real-DB browser acceptance
-      REVIEW_CATEGORY_LIVE_COUNTS: '0',
     },
     stdio: ['ignore', 'ignore', fs.openSync(apiLog, 'w')],
     windowsHide: true,

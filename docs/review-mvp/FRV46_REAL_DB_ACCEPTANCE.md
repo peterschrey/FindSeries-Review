@@ -118,12 +118,27 @@ npm --prefix review/web run test:frv46
 |---|---|
 | Stack | Browser → static `dist` + buffered `/api` proxy → Review API → **writable** C:-Gate-DB |
 | `REVIEW_DB_READONLY` | **0** (nötig für Range/Undo) |
-| `REVIEW_CATEGORY_LIVE_COUNTS` | **0** im Browser-Stack (1385 Roots × Live-Count würde Event-Loop stallen; Klick/Filter bleiben echte API) |
+| Category counts | **Produktions-Default** (set-basiert); **kein** `REVIEW_CATEGORY_LIVE_COUNTS` Bypass |
 | Produktiv- / E:-Guard | aktiv; nur `C:\Temp\FindSeries-Review-Test\…` |
 | Workflows A–E | **PASS** |
 | Teardown | API/Web-Ports frei, `.run-state.json` entfernt, Review-Status restore |
 
 Orchestrator-Default: Browser **an** (`-SkipBrowser` nur Diagnose).
+
+## Category counts — P0 N+1 Fix (FIX REVIEW 2)
+
+| Item | Vorher | Nachher |
+|---|---|---|
+| Root-Kategorien (P7) | **1385** | 1385 |
+| Default live counts | N+1: `buildFilteredMediaCte` + `COUNT(*)` **pro Knoten** | **eine** set-basierte Query (fm + CATEGORY_GRAPH resolved + root/subtree map) |
+| Einzel-Subtree-Stichprobe | ≈450–570 ms / Root | — |
+| Extrapoliert Root-Load N+1 | ≈11+ Min (Event-Loop-Stall) | — |
+| Root-List mit Filter (gemessen) | Bypass-only / praktisch unbenutzbar | **≈5.2 s** (C:-Gate, readonly measure) |
+| Expand Kinder von 14367 (33) | **≈34.5 s** (N+1) | **≈0.24 s** |
+| Kat. 14367 `mediaCount` | — | **1621** (= Gallery-Subtree) VERIFIED |
+| Acceptance-Bypass | `REVIEW_CATEGORY_LIVE_COUNTS=0` | **entfernt** |
+
+Regression: `review/api/tests/category-counts-setbased.test.ts` (>500 Nodes, Count-Korrektheit, Prepare-Budget).
 
 ## Performance (Cold/Warm, API)
 
