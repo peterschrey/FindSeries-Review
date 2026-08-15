@@ -16,10 +16,16 @@ if (!files.length) {
 }
 
 console.log(`Running ${files.length} test files…`);
-const r = spawnSync(process.execPath, ['--import', 'tsx', '--test', ...files], {
-  stdio: 'inherit',
-  cwd: apiRoot,
-  env: process.env,
-  shell: false,
-});
+// Sequential: better-sqlite3 + Node test-runner concurrency can crash on Windows
+// CI (RemoveEnvironmentCleanupHook / Statement destructor) under Node 24+.
+const r = spawnSync(
+  process.execPath,
+  ['--import', 'tsx', '--test', '--test-concurrency=1', ...files],
+  {
+    stdio: 'inherit',
+    cwd: apiRoot,
+    env: process.env,
+    shell: false,
+  },
+);
 process.exit(r.status ?? 1);
