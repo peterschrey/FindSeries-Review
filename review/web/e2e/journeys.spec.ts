@@ -19,13 +19,22 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '../../..');
 const sqlite3 = path.join(repoRoot, 'Tools/sqlite3.exe');
 
+/** No media_review_status row ⇒ sparse unreviewed (canonical). Explicit "unreviewed" row is NOT sparse. */
 function dbStatus(mediaId: number): string {
-  const out = execFileSync(
+  const count = execFileSync(
     sqlite3,
-    [e2eDbPath(), `SELECT IFNULL(status,'SPARSE') FROM media_review_status WHERE project_id=7 AND media_id=${mediaId};`],
+    [
+      e2eDbPath(),
+      `SELECT COUNT(*) FROM media_review_status WHERE project_id=7 AND media_id=${mediaId};`,
+    ],
     { encoding: 'utf8' },
   ).trim();
-  return out || 'SPARSE';
+  if (count === '0' || count === '') return 'SPARSE';
+  return execFileSync(
+    sqlite3,
+    [e2eDbPath(), `SELECT status FROM media_review_status WHERE project_id=7 AND media_id=${mediaId};`],
+    { encoding: 'utf8' },
+  ).trim();
 }
 
 function dbExec(sql: string) {
@@ -149,8 +158,8 @@ test('J9 — UNSURE + RESET (sparse)', async ({ page }) => {
   await selectThumb(page, 10);
   await pressReviewKey(page, 'n');
   await expect(page.getByTestId('bulk-banner')).toBeVisible({ timeout: 15_000 });
-  const st = dbStatus(10);
-  expect(st === 'SPARSE' || st === 'unreviewed').toBeTruthy();
+  // reset_unreviewed must delete the row (sparse model) — not insert explicit unreviewed
+  expect(dbStatus(10)).toBe('SPARSE');
 });
 
 test('J10 — CATEGORY NAVIGATION', async ({ page }) => {
@@ -207,57 +216,80 @@ test('J14 — FOCUS RELATION', async ({ page }) => {
   const seriesRel = page.getByTestId('focus-relation-series');
   await expect(seriesRel).toBeVisible({ timeout: 15_000 });
   await expect(seriesRel).toBeEnabled();
+  const cardTotal = Number((await seriesRel.locator('.relCount').innerText()).replace(/\D/g, ''));
+  expect(cardTotal).toBeGreaterThan(0);
   const before = await resultTotal(page);
   await seriesRel.click();
   await expect(seriesRel).toHaveClass(/active/);
   await expect(page.getByTestId('focus-card')).toBeVisible();
   const after = await resultTotal(page);
-  expect(after).toBeLessThanOrEqual(before);
-  expect(after).toBeGreaterThan(0);
+  expect(after).toBeLessThan(before);
+  expect(after).toBe(cardTotal);
   await seriesRel.click();
   await expect(seriesRel).not.toHaveClass(/active/);
-  // Similarity P1 placeholder if present
   const similar = page.getByTestId('focus-relation-similar');
-  if ((await similar.count()) > 0) {
-    await expect(similar).toBeDisabled();
-    await expect(similar).toContainText(/P1|similar/i);
-  }
+  await expect(similar).toBeVisible();
+  await expect(similar).toBeDisabled();
+  await expect(similar).toContainText(/P1|similar/i);
 });
 
 test('CHAIN — Notion kritische Journey', async ({ page }) => {
-  // Category → group → range → reject → stats → undo → focus dblclick → relation → focus X
-  const expand = page.locator('.catRow', { has: page.getByTestId('category-100') }).locator('.catExp');
-  if (await expand.count()) await expand.click();
-  await expect(page.getByTestId('category-101')).toBeVisible({ timeout: 10_000 });
-  await page.getByTestId('category-101').click();
+  // Kategorie 100 (Subtree) → Herkunft-Gruppe → Range≥2 → Reject → Stats → Undo → Fokus → Serie → Fokus-X
+  // Herkunft-Gruppe lässt beide Serien (Dental + Instrument); Series-Relation muss danach einschränken.
+  await expect(page.getByTestId('category-100')).toBeVisible({ timeout: 15_000 });
+  await page.getByTestId('category-100').click();
   await expect(page.locator('.crumb', { hasText: 'Kategorien' })).toBeVisible({ timeout: 10_000 });
-  await setGroupBy(page, 'uploader');
-  const uploaderCard = page.locator('[data-testid^="group-card-"]').first();
-  await expect(uploaderCard).toBeVisible({ timeout: 20_000 });
-  await uploaderCard.click();
-  const before = await resultTotal(page);
-  const thumbs = page.locator('[data-testid^="thumb-"]');
-  await expect(thumbs.first()).toBeVisible({ timeout: 15_000 });
-  const id1 = Number(await thumbs.nth(0).getAttribute('data-media-id'));
-  const count = await thumbs.count();
-  const id2 = Number(await thumbs.nth(Math.min(2, count - 1)).getAttribute('data-media-id'));
-  await selectThumb(page, id1);
-  if (id2 !== id1) await selectThumb(page, id2, ['Shift']);
-  expect(await selectionCount(page)).toBeGreaterThanOrEqual(1);
+  await expect.poll(async () => resultTotal(page)).toBeGreaterThanOrEqual(5);
+
+  await setGroupBy(page, 'provenance');
+  const provenanceCard = page.getByTestId('group-card-category:category');
+  await expect(provenanceCard).toBeVisible({ timeout: 20_000 });
+  const groupCardTotal = Number((await provenanceCard.locator('.relCount').innerText()).replace(/\D/g, ''));
+  expect(groupCardTotal).toBeGreaterThanOrEqual(2);
+  await provenanceCard.click();
+  await expect(page.locator('.crumb', { hasText: 'Category Search' })).toBeVisible({
+    timeout: 10_000,
+  });
+  await expect.poll(async () => resultTotal(page)).toBe(groupCardTotal);
+
+  const beforeReject = await resultTotal(page);
+  expect(beforeReject).toBeGreaterThanOrEqual(2);
+  await expect(page.getByTestId('thumb-1')).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId('thumb-3')).toBeVisible();
+  await selectThumb(page, 1);
+  await selectThumb(page, 3, ['Shift']);
+  const selected = await selectionCount(page);
+  expect(selected).toBeGreaterThanOrEqual(2);
+
   await pressReviewKey(page, 'r');
   await expect(page.getByTestId('bulk-banner')).toBeVisible({ timeout: 15_000 });
-  await expect.poll(async () => resultTotal(page)).toBeLessThanOrEqual(before);
+  await expect.poll(async () => resultTotal(page)).toBeLessThan(beforeReject);
+  const afterReject = await resultTotal(page);
+
   await pressReviewKey(page, 'Control+z');
   await expect(page.locator('.toast', { hasText: /Undo/ })).toBeVisible({ timeout: 15_000 });
-  const focusId = Number(await page.locator('[data-testid^="thumb-"]').first().getAttribute('data-media-id'));
-  await dblclickThumb(page, focusId);
+  await expect.poll(async () => resultTotal(page)).toBe(beforeReject);
+  expect(afterReject).toBeLessThan(beforeReject);
+
+  await dblclickThumb(page, 1);
   await expect(page.getByTestId('focus-card')).toBeVisible({ timeout: 15_000 });
-  const rel = page.locator('[data-testid^="focus-relation-"]:not([disabled])').first();
-  if ((await rel.count()) > 0) {
-    await rel.click();
-  }
+  await expect(page.getByTestId('focus-card')).toContainText('#1');
+  const seriesRel = page.getByTestId('focus-relation-series');
+  await expect(seriesRel).toBeVisible({ timeout: 15_000 });
+  await expect(seriesRel).toBeEnabled();
+  const seriesCardTotal = Number((await seriesRel.locator('.relCount').innerText()).replace(/\D/g, ''));
+  expect(seriesCardTotal).toBeGreaterThan(0);
+  const beforeRelation = await resultTotal(page);
+  await seriesRel.click();
+  await expect(seriesRel).toHaveClass(/active/);
+  await expect.poll(async () => resultTotal(page)).toBeLessThan(beforeRelation);
+  const afterRelation = await resultTotal(page);
+  expect(afterRelation).toBe(seriesCardTotal);
+  await expect(page.getByTestId('focus-card')).toBeVisible();
+
   await page.getByRole('button', { name: 'Fokus aufheben' }).click();
   await expect(page.getByTestId('focus-card')).toHaveCount(0);
+
   const health = await page.request.get(`${e2eBaseURL()}/api/projects`);
   expect(health.ok()).toBeTruthy();
 });
