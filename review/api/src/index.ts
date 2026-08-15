@@ -4,7 +4,7 @@ import { buildServer } from './server.js';
 
 const databasePath =
   process.env.REVIEW_DB_PATH ??
-  path.resolve('C:/Temp/FindSeries-Review-Test/findseries-v5-phase1-gate.db');
+  path.resolve('C:/Temp/FindSeries-Review-Test/review-dev-mini.db');
 const port = Number(process.env.REVIEW_API_PORT ?? 8787);
 const host = process.env.REVIEW_API_HOST ?? '127.0.0.1';
 const finalizeLogDir =

@@ -1,5 +1,9 @@
 /**
  * Shared helpers for Review MVP performance benches (FRV-38/39/40).
+ *
+ * Defaults:
+ * - Development / unit / e2e → review-dev-mini.db
+ * - Explicit perf / migration / real-DB acceptance → full gate copy via REVIEW_PERF_DB_PATH
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -9,9 +13,21 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const repoRoot = path.resolve(__dirname, '../../..');
 export const benchDocDir = path.join(repoRoot, 'docs/review-mvp/bench');
 
-export const DEFAULT_GATE_DB =
+/** Small representative DB — default for local API/dev when REVIEW_DB_PATH unset. */
+export const DEFAULT_DEV_DB =
   process.env.REVIEW_DB_PATH ??
+  'C:/Temp/FindSeries-Review-Test/review-dev-mini.db';
+
+/**
+ * Full ~100k+/gate test copy — only for explicit performance benches.
+ * Does **not** follow REVIEW_DB_PATH (that defaults to mini for daily work).
+ */
+export const DEFAULT_PERF_DB =
+  process.env.REVIEW_PERF_DB_PATH ??
   'C:/Temp/FindSeries-Review-Test/findseries-v5-phase1-gate.db';
+
+/** @deprecated Alias for DEFAULT_PERF_DB (FRV-38/39/40 benches). */
+export const DEFAULT_GATE_DB = DEFAULT_PERF_DB;
 
 /** Prefer C:/Temp write copy; fall back to E: if present (large ~19GB). */
 export const DEFAULT_WRITE_DB = (() => {

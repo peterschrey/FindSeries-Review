@@ -1,6 +1,6 @@
 /**
- * Real-DB-copy benchmarks (read-mostly). Writes only into a disposable temp copy if needed.
- * Default: C:\Temp\FindSeries-Review-Test\findseries-v5-phase1-gate.db
+ * Real-DB benchmarks. Default for *this* script is the full gate copy via REVIEW_PERF_DB_PATH.
+ * Day-to-day API default is review-dev-mini.db (see src/index.ts).
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -12,8 +12,9 @@ import { queryFocus } from '../src/services/focus.js';
 import { applyBulk, undoBatch } from '../src/services/bulk.js';
 
 const dbPath =
+  process.env.REVIEW_PERF_DB_PATH ??
   process.env.REVIEW_DB_PATH ??
-  'C:/Temp/FindSeries-Review-Test/findseries-v5-phase1-gate.db';
+  'C:/Temp/FindSeries-Review-Test/review-dev-mini.db';
 
 function timed<T>(label: string, fn: () => T): T {
   const t0 = performance.now();

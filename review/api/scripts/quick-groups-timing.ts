@@ -3,7 +3,7 @@ import { queryGroups } from '../src/services/groups.js';
 import type { GroupBy } from '@findseries/review-shared';
 
 const dbPath =
-  process.env.REVIEW_DB_PATH ?? 'C:/Temp/FindSeries-Review-Test/findseries-v5-phase1-gate.db';
+  process.env.REVIEW_DB_PATH ?? 'C:/Temp/FindSeries-Review-Test/review-dev-mini.db';
 const projectId = Number(process.env.REVIEW_BENCH_PROJECT_ID ?? 7);
 const db = openReviewDb(dbPath);
 
