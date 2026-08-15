@@ -76,15 +76,25 @@ describe('expandedIds independent of selection', () => {
     expect(Object.keys(childrenCache)).toHaveLength(0);
   });
 
-  it('filter cache key change clears childrenCache, may keep expanded', () => {
+  it('filter cache key change clears childrenCache and expandedIds', () => {
     let expanded = new Set([100, 102]);
     let childrenCache: Record<number, unknown[]> = { 100: [{ id: 1 }] };
     const keyBefore = categoryTreeCacheKey(base);
     const keyAfter = categoryTreeCacheKey({ ...base, q: 'x' });
     expect(keyBefore).not.toBe(keyAfter);
-    // On filter key change: clear cache, optionally keep expanded
+    // On filter key change: clear cache AND expanded (LeftNav contract)
     childrenCache = {};
+    expanded = new Set();
     expect(Object.keys(childrenCache)).toHaveLength(0);
+    expect(expanded.size).toBe(0);
+  });
+
+  it('selection/focus changes do not clear expandedIds (not in cache key)', () => {
+    let expanded = new Set([100, 102, 103]);
+    const key = categoryTreeCacheKey(base);
+    // Simulate selection/focus change — cache key unchanged
+    expect(categoryTreeCacheKey(base)).toBe(key);
     expect(isExpanded(expanded, 100)).toBe(true);
+    expect(isExpanded(expanded, 103)).toBe(true);
   });
 });

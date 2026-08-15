@@ -2,6 +2,41 @@ import type { MediaFilter, ReviewStatus, SortDir, SortField } from '@findseries/
 
 export type BoundSql = { sql: string; params: unknown[] };
 
+/**
+ * Full CATEGORY_GRAPH membership for a project: (media_id, category_id) pairs.
+ *
+ * Semantics (same as categoryMediaSql, without filtering to specific category IDs):
+ * 1. origin_category_id when present
+ * 2. else validated source_value fallback (normalized_title + project_categories, unambiguous only)
+ * 3. no invented assignments
+ *
+ * Filters already use the same membership rules via categoryMediaSql; groupBy=category
+ * joins this helper so keys/totals align with gallery drilldown.
+ *
+ * Unambiguous check: JOIN categories on normalized_title. Schema enforces
+ * UNIQUE(normalized_title), so this matches categoryMediaSql's COUNT(*)=1 guard.
+ * (A set-based HAVING COUNT=1 CTE is equivalent if uniqueness were ever relaxed.)
+ */
+export function resolvedCategoryMembershipSql(projectId: number): BoundSql {
+  return {
+    sql: `
+SELECT d.media_id AS media_id, d.origin_category_id AS category_id
+FROM discoveries d
+WHERE d.project_id = ? AND d.source_type = 'category'
+  AND d.origin_category_id IS NOT NULL
+UNION
+SELECT d.media_id AS media_id, c.id AS category_id
+FROM discoveries d
+JOIN categories c ON c.normalized_title = lower(d.source_value)
+JOIN project_categories pc ON pc.project_id = ? AND pc.category_id = c.id
+WHERE d.project_id = ?
+  AND d.source_type = 'category'
+  AND d.origin_category_id IS NULL
+  AND d.source_value IS NOT NULL AND trim(d.source_value) <> ''`,
+    params: [projectId, projectId, projectId],
+  };
+}
+
 /** Category membership with origin_category_id + validated source_value fallback. */
 export function categoryMediaSql(
   projectId: number,

@@ -5,9 +5,15 @@ import type {
   GroupsResponse,
   MediaCard,
   MediaFilter,
+  ReviewStatus,
+  StatusCounts,
 } from '@findseries/review-shared';
 import type { ReviewDb } from '../db.js';
-import { buildFilteredMediaCte } from '../sql/filters.js';
+import {
+  buildFilteredMediaCte,
+  resolveStatuses,
+  resolvedCategoryMembershipSql,
+} from '../sql/filters.js';
 import { computeStatusCounts } from './gallery.js';
 
 function mapSample(r: Record<string, unknown>): MediaCard {
@@ -23,15 +29,22 @@ function mapSample(r: Record<string, unknown>): MediaCard {
   };
 }
 
-type GroupExpr = { selectKey: string; join: string; joinParams: (projectId: number) => unknown[] };
+type GroupExpr = {
+  selectKey: string;
+  join: string;
+  joinParams: unknown[];
+  /** Optional CTEs prepended before `fm` (params bind before fm params). */
+  leadingCteSql?: string;
+  leadingCteParams?: unknown[];
+};
 
-function groupKeyExpr(groupBy: GroupBy): GroupExpr {
+function groupKeyExpr(groupBy: GroupBy, projectId: number): GroupExpr {
   switch (groupBy) {
     case 'uploader':
       return {
         selectKey: `COALESCE(NULLIF(fm.uploader,''), '(ohne Uploader)')`,
         join: '',
-        joinParams: () => [],
+        joinParams: [],
       };
     case 'provenance':
       return {
@@ -39,7 +52,7 @@ function groupKeyExpr(groupBy: GroupBy): GroupExpr {
         join: `
 JOIN discoveries d ON d.project_id = ? AND d.media_id = fm.media_id
 LEFT JOIN review_provenance_type_map rpm ON rpm.source_type = d.source_type`,
-        joinParams: (projectId) => [projectId],
+        joinParams: [projectId],
       };
     case 'series':
       // Prefer primary media_series_keys; fall back to discovery series types.
@@ -51,7 +64,7 @@ LEFT JOIN media_series_keys msk
 LEFT JOIN discoveries d ON d.project_id = ? AND d.media_id = fm.media_id
   AND d.source_type IN ('filename-series','time-series','filename')
   AND msk.media_id IS NULL`,
-        joinParams: (projectId) => [projectId, projectId],
+        joinParams: [projectId, projectId],
       };
     case 'seed':
       // PROVENANCE_MODEL: neighbor→media:parent OR keyword→lower(trim(query_text))
@@ -66,23 +79,29 @@ LEFT JOIN discoveries d ON d.project_id = ? AND d.media_id = fm.media_id
         join: `
 JOIN discoveries d ON d.project_id = ? AND d.media_id = fm.media_id
 LEFT JOIN review_provenance_type_map rpm ON rpm.source_type = d.source_type`,
-        joinParams: (projectId) => [projectId],
+        joinParams: [projectId],
       };
-    case 'category':
-      // Group keys use indexed origin_category_id only (fast path).
-      // Title/source_value fallback remains in filter SQL (categoryMediaSql), not here.
+    case 'category': {
+      // Full CATEGORY_GRAPH: MATERIALIZED CTE (origin ∪ validated fallback), then JOIN.
+      // Filters use the same rules via categoryMediaSql.
+      const resolved = resolvedCategoryMembershipSql(projectId);
       return {
-        selectKey: `CAST(d.origin_category_id AS TEXT)`,
-        join: `
-JOIN discoveries d
-  ON d.project_id = ? AND d.media_id = fm.media_id
- AND d.source_type = 'category'
- AND d.origin_category_id IS NOT NULL`,
-        joinParams: (projectId) => [projectId],
+        selectKey: `CAST(rc.category_id AS TEXT)`,
+        join: `JOIN resolved_category rc ON rc.media_id = fm.media_id`,
+        joinParams: [],
+        leadingCteSql: `resolved_category AS MATERIALIZED (${resolved.sql})`,
+        leadingCteParams: resolved.params,
       };
+    }
     default:
-      return { selectKey: `'all'`, join: '', joinParams: () => [] };
+      return { selectKey: `'all'`, join: '', joinParams: [] };
   }
+}
+
+/** Build `WITH [leading,] fm AS (...)` prefix; returns SQL fragment + bind order hint. */
+function withFmSql(fmSql: string, leadingCteSql?: string): string {
+  if (leadingCteSql) return `WITH ${leadingCteSql}, fm AS (${fmSql})`;
+  return `WITH fm AS (${fmSql})`;
 }
 
 function drilldownFor(
@@ -128,17 +147,19 @@ function drilldownFor(
     case 'category': {
       const id = Number(key);
       if (!Number.isFinite(id)) return common;
+      // Group keys are exact CATEGORY_GRAPH membership; drilldown must not expand subtree
+      // (otherwise parent keys: card total ≠ gallery after click).
       if (base.categoryIds?.length) {
         return {
           ...common,
           alsoCategoryIds: [id],
-          alsoCategoryIncludeDescendants: base.categoryIncludeDescendants !== false,
+          alsoCategoryIncludeDescendants: false,
         };
       }
       return {
         ...common,
         categoryIds: [id],
-        categoryIncludeDescendants: base.categoryIncludeDescendants,
+        categoryIncludeDescendants: false,
       };
     }
     default:
@@ -164,6 +185,35 @@ function labelFor(db: ReviewDb, groupBy: GroupBy, key: string): string {
   return key;
 }
 
+function emptyStatusBucket(): Omit<StatusCounts, 'total'> {
+  return { unreviewed: 0, keep: 0, reject: 0, unsure: 0 };
+}
+
+function toStatusCounts(row: {
+  unreviewed?: number;
+  keep?: number;
+  reject?: number;
+  unsure?: number;
+  total?: number;
+} | undefined): StatusCounts {
+  const unreviewed = Number(row?.unreviewed ?? 0);
+  const keep = Number(row?.keep ?? 0);
+  const reject = Number(row?.reject ?? 0);
+  const unsure = Number(row?.unsure ?? 0);
+  return {
+    unreviewed,
+    keep,
+    reject,
+    unsure,
+    total: Number(row?.total ?? unreviewed + keep + reject + unsure),
+  };
+}
+
+function needsProgressBreakdown(statuses: ReviewStatus[] | 'empty'): boolean {
+  if (statuses === 'empty') return false;
+  return statuses.length < 4;
+}
+
 export function queryGroups(db: ReviewDb, q: GroupQuery): GroupsResponse {
   const filter: MediaFilter = {
     projectId: q.projectId,
@@ -181,14 +231,21 @@ export function queryGroups(db: ReviewDb, q: GroupQuery): GroupsResponse {
     parentMediaId: q.parentMediaId,
     mediaIds: q.mediaIds,
   };
-  const { selectKey, join, joinParams } = groupKeyExpr(q.groupBy);
-  const jp = joinParams(q.projectId);
+  const {
+    selectKey,
+    join,
+    joinParams: jp,
+    leadingCteSql,
+    leadingCteParams = [],
+  } = groupKeyExpr(q.groupBy, q.projectId);
+  const uiStatuses = resolveStatuses(filter);
+  const lead = leadingCteParams;
 
-  // Key discovery respects UI status chips (same as before).
+  // Key discovery + visible totals/samples respect UI status chips (drilldown gallery).
   const uiBase = buildFilteredMediaCte(filter, 'count');
   const keyOnly = db
     .prepare(
-      `WITH fm AS (${uiBase.sql})
+      `${withFmSql(uiBase.sql, leadingCteSql)}
        SELECT ${selectKey} AS gkey, COUNT(DISTINCT fm.media_id) AS approx_total
        FROM fm
        ${join}
@@ -197,7 +254,7 @@ export function queryGroups(db: ReviewDb, q: GroupQuery): GroupsResponse {
        ORDER BY approx_total DESC
        LIMIT ?`,
     )
-    .all(...uiBase.params, ...jp, q.limit) as Array<{ gkey: string; approx_total: number }>;
+    .all(...lead, ...uiBase.params, ...jp, q.limit) as Array<{ gkey: string; approx_total: number }>;
 
   if (!keyOnly.length) {
     const statusCounts = computeStatusCounts(db, filter, { breakdownAllStatuses: true });
@@ -207,15 +264,18 @@ export function queryGroups(db: ReviewDb, q: GroupQuery): GroupsResponse {
   const keys = keyOnly.map((r) => String(r.gkey));
   const keyPlaceholders = keys.map(() => '?').join(',');
 
-  // One status-breakdown pass for the selected keys (all 4 statuses — matches prior DoD).
-  const allStatusFilter: MediaFilter = {
-    ...filter,
-    statuses: ['unreviewed', 'keep', 'reject', 'unsure'],
+  type StatRow = {
+    gkey: string;
+    total: number;
+    unreviewed: number;
+    keep: number;
+    reject: number;
+    unsure: number;
   };
-  const allBase = buildFilteredMediaCte(allStatusFilter, 'count');
-  const statRows = db
+
+  const visibleStatRows = db
     .prepare(
-      `WITH fm AS (${allBase.sql}),
+      `${withFmSql(uiBase.sql, leadingCteSql)},
        tagged AS (
          SELECT DISTINCT fm.media_id AS media_id,
                 fm.review_status AS review_status,
@@ -234,21 +294,46 @@ export function queryGroups(db: ReviewDb, q: GroupQuery): GroupsResponse {
        FROM tagged
        GROUP BY gkey`,
     )
-    .all(...allBase.params, ...jp, ...keys) as Array<{
-    gkey: string;
-    total: number;
-    unreviewed: number;
-    keep: number;
-    reject: number;
-    unsure: number;
-  }>;
-  const statsByKey = new Map(statRows.map((r) => [String(r.gkey), r]));
+    .all(...lead, ...uiBase.params, ...jp, ...keys) as StatRow[];
+  const visibleByKey = new Map(visibleStatRows.map((r) => [String(r.gkey), r]));
+
+  let progressByKey = new Map<string, StatRow>();
+  if (needsProgressBreakdown(uiStatuses)) {
+    const allStatusFilter: MediaFilter = {
+      ...filter,
+      statuses: ['unreviewed', 'keep', 'reject', 'unsure'],
+    };
+    const allBase = buildFilteredMediaCte(allStatusFilter, 'count');
+    const progressRows = db
+      .prepare(
+        `${withFmSql(allBase.sql, leadingCteSql)},
+         tagged AS (
+           SELECT DISTINCT fm.media_id AS media_id,
+                  fm.review_status AS review_status,
+                  ${selectKey} AS gkey
+           FROM fm
+           ${join}
+           WHERE ${selectKey} IS NOT NULL
+             AND ${selectKey} IN (${keyPlaceholders})
+         )
+         SELECT gkey,
+                COUNT(*) AS total,
+                SUM(CASE WHEN review_status='unreviewed' THEN 1 ELSE 0 END) AS unreviewed,
+                SUM(CASE WHEN review_status='keep' THEN 1 ELSE 0 END) AS keep,
+                SUM(CASE WHEN review_status='reject' THEN 1 ELSE 0 END) AS reject,
+                SUM(CASE WHEN review_status='unsure' THEN 1 ELSE 0 END) AS unsure
+         FROM tagged
+         GROUP BY gkey`,
+      )
+      .all(...lead, ...allBase.params, ...jp, ...keys) as StatRow[];
+    progressByKey = new Map(progressRows.map((r) => [String(r.gkey), r]));
+  }
 
   const sampleByKey = new Map<string, MediaCard[]>();
   if (q.sampleSize > 0) {
     const sampleRows = db
       .prepare(
-        `WITH fm AS (${allBase.sql}),
+        `${withFmSql(uiBase.sql, leadingCteSql)},
          tagged AS (
            SELECT DISTINCT fm.media_id AS media_id,
                   fm.title AS title,
@@ -270,7 +355,7 @@ export function queryGroups(db: ReviewDb, q: GroupQuery): GroupsResponse {
          SELECT * FROM ranked WHERE rn <= ?
          ORDER BY gkey, media_id`,
       )
-      .all(...allBase.params, ...jp, ...keys, q.sampleSize) as Record<string, unknown>[];
+      .all(...lead, ...uiBase.params, ...jp, ...keys, q.sampleSize) as Record<string, unknown>[];
     for (const row of sampleRows) {
       const k = String(row.gkey);
       const list = sampleByKey.get(k) ?? [];
@@ -282,22 +367,25 @@ export function queryGroups(db: ReviewDb, q: GroupQuery): GroupsResponse {
   const groups: GroupCard[] = keyOnly.map((r) => {
     const key = String(r.gkey ?? '');
     const drill = drilldownFor(q.groupBy, key, q.projectId, filter);
-    const st = statsByKey.get(key);
-    const accurate = {
-      unreviewed: Number(st?.unreviewed ?? 0),
-      keep: Number(st?.keep ?? 0),
-      reject: Number(st?.reject ?? 0),
-      unsure: Number(st?.unsure ?? 0),
-      total: Number(st?.total ?? r.approx_total ?? 0),
-    };
-    return {
+    const vis = toStatusCounts(visibleByKey.get(key) ?? {
+      ...emptyStatusBucket(),
+      total: Number(r.approx_total ?? 0),
+    });
+    const card: GroupCard = {
       key,
       label: labelFor(db, q.groupBy, key),
-      total: accurate.total,
-      statusCounts: accurate,
+      total: vis.total,
+      statusCounts: vis,
       sampleMedia: sampleByKey.get(key) ?? [],
       drilldown: drill,
     };
+    if (needsProgressBreakdown(uiStatuses)) {
+      const prog = progressByKey.get(key);
+      if (prog) {
+        card.progressStatusCounts = toStatusCounts(prog);
+      }
+    }
+    return card;
   });
 
   const statusCounts = computeStatusCounts(db, filter, { breakdownAllStatuses: true });

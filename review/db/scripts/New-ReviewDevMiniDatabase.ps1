@@ -42,13 +42,24 @@ if (-not (Test-Path -LiteralPath $SourceDatabase)) {
     throw "Source test DB not found: $SourceDatabase (never use production path)"
 }
 
-# Hard safety: refuse known production path patterns
+# Hard safety: refuse production; fail-closed outside allowed test roots
 $srcFull = [IO.Path]::GetFullPath($SourceDatabase)
-if ($srcFull -match '(?i)\\FindSeriesV5-Workspace\\findseries-v5\.db$') {
-    throw "Refusing to read production workspace DB as source: $srcFull"
+$allowedRoots = @(
+    [IO.Path]::GetFullPath('C:\Temp\FindSeries-Review-Test'),
+    [IO.Path]::GetFullPath('E:\Temp\FindSeries-Review-Test')
+)
+if ($srcFull -match '(?i)([\\/]FindSeriesV5-Workspace[\\/]findseries-v5\.db$)|(^[A-Z]:\\FindSeriesV5-Workspace[\\/]findseries-v5\.db$)') {
+    throw "Refusing production FindSeries DB as source: $srcFull"
 }
-if ($srcFull -notmatch '(?i)Temp|test|copy|gate|mini|bench') {
-    Write-Warning "Source path does not look like a Temp/test copy: $srcFull"
+$underAllowed = $false
+foreach ($root in $allowedRoots) {
+    if ($srcFull.StartsWith($root, [StringComparison]::OrdinalIgnoreCase)) {
+        $underAllowed = $true
+        break
+    }
+}
+if (-not $underAllowed) {
+    throw "Fail-closed: source must be under C:\Temp\FindSeries-Review-Test or E:\Temp\FindSeries-Review-Test. Got: $srcFull"
 }
 
 function Invoke-Sqlite {
@@ -123,10 +134,12 @@ try {
     Remove-Item -LiteralPath $schemaFile -Force -ErrorAction SilentlyContinue
 }
 
-$srcUri = $SourceDatabase.Replace('\', '/')
+# URI with mode=ro so ATTACH cannot write / create WAL on the source
+$srcUri = ('file:{0}?mode=ro' -f ($SourceDatabase.Replace('\', '/')))
 $target = $TargetMediaCount
 
 Write-Host "Selecting representative media set + copying rows (this may take several minutes)..."
+Write-Host "ATTACH source (read-only URI): $srcUri"
 $buildSql = @"
 PRAGMA foreign_keys=OFF;
 PRAGMA journal_mode=OFF;
@@ -460,7 +473,8 @@ INSERT INTO main.media_review_status
 SELECT * FROM src.media_review_status
 WHERE media_id IN (SELECT media_id FROM keep_media);
 
--- Seed all four review statuses (source often sparse-empty for current status)
+-- Seed keep/reject/unsure only. Canonical unreviewed = missing current row (sparse).
+-- Do NOT insert explicit status='unreviewed' rows as the primary model.
 INSERT OR IGNORE INTO main.media_review_status(project_id, media_id, status, changed_at, source, action, batch_id)
 SELECT 7, km.media_id, 'keep', '2026-08-15T08:00:00.000Z', 'dev-mini', 'seed_status', 'dev-mini-seed-keep'
 FROM keep_media km
@@ -482,14 +496,8 @@ JOIN main.project_media pm ON pm.project_id = 7 AND pm.media_id = km.media_id
 WHERE (km.media_id % 40) = 3
 LIMIT 200;
 
--- explicit unreviewed row (rare) + sparse default for the rest
-INSERT OR IGNORE INTO main.media_review_status(project_id, media_id, status, changed_at, source, action, batch_id)
-SELECT 7, km.media_id, 'unreviewed', '2026-08-15T08:00:03.000Z', 'dev-mini', 'seed_status', 'dev-mini-seed-unreviewed'
-FROM keep_media km
-JOIN main.project_media pm ON pm.project_id = 7 AND pm.media_id = km.media_id
-WHERE (km.media_id % 40) = 4
-LIMIT 50;
-
+-- Multi-undo chain on one media: A keep → B unsure (history only; current = unsure)
+-- Undo B → keep; Undo A → sparse unreviewed (DELETE current).
 INSERT OR IGNORE INTO main.media_review_batches(
   batch_id, project_id, action, target_status, protect_keep,
   media_count, changed_count, protected_count, created_at, source, session_id
@@ -497,12 +505,32 @@ INSERT OR IGNORE INTO main.media_review_batches(
  ('dev-mini-seed-keep', 7, 'set_status', 'keep', 1, 200, 200, 0, '2026-08-15T08:00:00.000Z', 'dev-mini', 'dev-mini'),
  ('dev-mini-seed-reject', 7, 'set_status', 'reject', 1, 200, 200, 0, '2026-08-15T08:00:01.000Z', 'dev-mini', 'dev-mini'),
  ('dev-mini-seed-unsure', 7, 'set_status', 'unsure', 1, 200, 200, 0, '2026-08-15T08:00:02.000Z', 'dev-mini', 'dev-mini'),
- ('dev-mini-seed-unreviewed', 7, 'set_status', 'unreviewed', 1, 50, 50, 0, '2026-08-15T08:00:03.000Z', 'dev-mini', 'dev-mini');
+ ('dev-mini-undo-A', 7, 'set_status', 'keep', 1, 1, 1, 0, '2026-08-15T08:01:00.000Z', 'dev-mini', 'dev-mini-undo'),
+ ('dev-mini-undo-B', 7, 'set_status', 'unsure', 1, 1, 1, 0, '2026-08-15T08:01:01.000Z', 'dev-mini', 'dev-mini-undo');
 
 INSERT INTO main.media_review_history(project_id, media_id, old_status, new_status, changed_at, source, action, batch_id, session_id)
 SELECT project_id, media_id, 'unreviewed', status, changed_at, source, action, batch_id, 'dev-mini'
 FROM main.media_review_status
 WHERE batch_id LIKE 'dev-mini-seed-%';
+
+-- Pick one p7 media for undo chain (prefer one without seeded status above)
+INSERT OR REPLACE INTO main.media_review_status(project_id, media_id, status, changed_at, source, action, batch_id)
+SELECT 7, media_id, 'unsure', '2026-08-15T08:01:01.000Z', 'dev-mini', 'set_status', 'dev-mini-undo-B'
+FROM main.project_media
+WHERE project_id = 7 AND (media_id % 40) NOT IN (1, 2, 3)
+ORDER BY media_id
+LIMIT 1;
+
+INSERT INTO main.media_review_history(project_id, media_id, old_status, new_status, changed_at, source, action, batch_id, session_id)
+SELECT 7, media_id, 'unreviewed', 'keep', '2026-08-15T08:01:00.000Z', 'dev-mini', 'set_status', 'dev-mini-undo-A', 'dev-mini-undo'
+FROM main.media_review_status WHERE batch_id = 'dev-mini-undo-B';
+
+INSERT INTO main.media_review_history(project_id, media_id, old_status, new_status, changed_at, source, action, batch_id, session_id)
+SELECT 7, media_id, 'keep', 'unsure', '2026-08-15T08:01:01.000Z', 'dev-mini', 'set_status', 'dev-mini-undo-B', 'dev-mini-undo'
+FROM main.media_review_status WHERE batch_id = 'dev-mini-undo-B';
+
+-- media_series_keys: P0 prefers primary keys but falls back to discovery series types.
+-- Gate source has 0 rows; leave empty here. Synthetic tests cover materialized keys.
 
 -- Representation report table (for docs)
 CREATE TABLE IF NOT EXISTS _dev_mini_meta (
@@ -514,6 +542,9 @@ INSERT OR REPLACE INTO _dev_mini_meta(key, value) VALUES
  ('source', '$srcUri'),
  ('target_media', '$target'),
  ('media_count', (SELECT CAST(COUNT(*) AS TEXT) FROM keep_media)),
+ ('media_series_keys_note', 'empty; P0 series uses discovery fallback + synthetic coverage'),
+ ('sparse_unreviewed', 'missing media_review_status row = unreviewed; no explicit unreviewed seed rows'),
+ ('undo_chain', 'dev-mini-undo-A keep then dev-mini-undo-B unsure on one media'),
  ('reason_counts', (
     SELECT group_concat(reason || '=' || c, ',')
     FROM (SELECT reason, COUNT(*) AS c FROM keep_media GROUP BY reason ORDER BY reason)
@@ -585,10 +616,20 @@ SELECT 'fallback_cat', COUNT(*) FROM discoveries WHERE source_type='category' AN
 SELECT 'status_keep', COUNT(*) FROM media_review_status WHERE status='keep';
 SELECT 'status_reject', COUNT(*) FROM media_review_status WHERE status='reject';
 SELECT 'status_unsure', COUNT(*) FROM media_review_status WHERE status='unsure';
-SELECT 'status_unreviewed', COUNT(*) FROM media_review_status WHERE status='unreviewed';
+SELECT 'status_unreviewed_explicit', COUNT(*) FROM media_review_status WHERE status='unreviewed';
+SELECT 'sparse_unreviewed_p7', (
+  SELECT COUNT(*) FROM project_media pm
+  WHERE pm.project_id=7
+    AND NOT EXISTS (
+      SELECT 1 FROM media_review_status mrs
+      WHERE mrs.project_id=pm.project_id AND mrs.media_id=pm.media_id
+    )
+);
+SELECT 'undo_chain_media', media_id FROM media_review_status WHERE batch_id='dev-mini-undo-B';
 SELECT 'deep_pc', COUNT(*) FROM project_categories WHERE project_id=7 AND depth>=2;
 SELECT 'source_types', COUNT(DISTINCT source_type) FROM discoveries;
 SELECT 'reason_meta', value FROM _dev_mini_meta WHERE key='reason_counts';
+SELECT 'series_keys_note', value FROM _dev_mini_meta WHERE key='media_series_keys_note';
 "@
 Invoke-Sqlite -Database $OutputDatabase -Sql $repSql -Readonly | ForEach-Object { Write-Host "  $_" }
 

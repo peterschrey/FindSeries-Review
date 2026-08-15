@@ -7,18 +7,15 @@ import { ThumbImage } from './ThumbImage';
 import { fetchFocus } from '../api/client';
 
 /** Drilldown patch = only the group constraint (AND with globals). */
-export function drilldownPatchFromGroup(
-  groupBy: GroupBy,
-  g: GroupCard,
-  opts?: { categoryIncludeDescendants?: boolean },
-): Partial<MediaFilter> {
+export function drilldownPatchFromGroup(groupBy: GroupBy, g: GroupCard): Partial<MediaFilter> {
   switch (groupBy) {
     case 'category': {
       const id = Number(g.key);
       return Number.isFinite(id)
         ? {
             categoryIds: [id],
-            categoryIncludeDescendants: opts?.categoryIncludeDescendants,
+            // Exact membership (group key), not LeftNav subtree toggle
+            categoryIncludeDescendants: false,
           }
         : {};
     }
@@ -228,9 +225,7 @@ export function GroupShelf({
                         kind: 'group',
                         key: g.key,
                         label: g.label,
-                        patch: drilldownPatchFromGroup(state.groupBy, g, {
-                          categoryIncludeDescendants: state.categoryIncludeDescendants,
-                        }),
+                        patch: drilldownPatchFromGroup(state.groupBy, g),
                       },
                 })
               }
@@ -242,7 +237,7 @@ export function GroupShelf({
                 </div>
                 <div className="relCount">{g.total}</div>
               </div>
-              <MiniStatusBar counts={g.statusCounts} />
+              <MiniStatusBar counts={g.progressStatusCounts ?? g.statusCounts} />
               <div className="thumbsRow">
                 {g.sampleMedia.slice(0, 4).map((m) => (
                   <ThumbImage key={m.mediaId} mediaId={m.mediaId} className="miniThumb" size={80} />

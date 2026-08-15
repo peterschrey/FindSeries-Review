@@ -33,7 +33,7 @@ describe('Phase-5 group counts with global filters', () => {
     assert.ok(instruments, 'Instruments group present under Dentistry subtree');
     assert.deepEqual(instruments!.drilldown.categoryIds, [100]);
     assert.deepEqual(instruments!.drilldown.alsoCategoryIds, [103]);
-    assert.equal(instruments!.drilldown.alsoCategoryIncludeDescendants, true);
+    assert.equal(instruments!.drilldown.alsoCategoryIncludeDescendants, false);
 
     const gallery = queryGallery(db, {
       projectId: 7,
@@ -50,18 +50,16 @@ describe('Phase-5 group counts with global filters', () => {
     assert.equal(instruments!.statusCounts.total, gallery.total);
   });
 
-  it('exact categoryIncludeDescendants=false preserved in drilldown', () => {
+  it('category group drilldown is exact membership (no subtree)', () => {
     const groups = queryGroups(db, {
       projectId: 7,
       statuses: [...ALL],
       categoryIds: [100],
-      categoryIncludeDescendants: false,
+      categoryIncludeDescendants: true,
       groupBy: 'category',
       limit: 50,
       sampleSize: 0,
     });
-    // Exact-only on 100: media in 100 itself (none in synthetic — origin is children)
-    // Group keys still from filtered base; any category drilldown must preserve flag
     for (const g of groups.groups) {
       if (g.drilldown.alsoCategoryIds?.length) {
         assert.equal(g.drilldown.alsoCategoryIncludeDescendants, false);

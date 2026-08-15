@@ -47,6 +47,9 @@ export function LeftNav({
       setChildrenCache({});
       prevProjectRef.current = state.projectId;
     } else if (prevKeyRef.current !== cacheKey) {
+      // Filter change: clear expand state + children (same as project change for expand).
+      // Selection/focus are independent and must NOT reset the tree via this effect.
+      setExpandedIds(new Set());
       setChildrenCache({});
     }
     prevKeyRef.current = cacheKey;

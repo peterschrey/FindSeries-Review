@@ -142,8 +142,18 @@ export type GroupQuery = z.infer<typeof GroupQuerySchema>;
 export const GroupCardSchema = z.object({
   key: z.string(),
   label: z.string(),
+  /**
+   * Visible/drilldown total: media matching UI status chips (same as gallery after click).
+   * Equals sum of statusCounts (which are also scoped to drilldown statuses).
+   */
   total: z.number().int().nonnegative(),
+  /** Counts within drilldown/UI statuses; sum(unreviewed+keep+reject+unsure) === total. */
   statusCounts: StatusCountsSchema,
+  /**
+   * Optional full 4-status breakdown for progress bar (FRV-37).
+   * Present when different from statusCounts (e.g. UI chips are a subset).
+   */
+  progressStatusCounts: StatusCountsSchema.optional(),
   sampleMedia: z.array(MediaCardSchema),
   drilldown: MediaFilterSchema.partial().extend({ projectId: z.number().int().positive() }),
 });

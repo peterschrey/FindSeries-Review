@@ -243,22 +243,41 @@ export function queryFocus(db: ReviewDb, q: FocusQuery): FocusResponse {
     relations.push(unavailable('seed', 'Seed', 'Kein belastbarer Seed (PROVENANCE_MODEL)'));
   }
 
-  // uploader
+  // uploader — AND with global filter (same conflict pattern as reviewState applyPatch)
   const media = db
     .prepare(`SELECT current_uploader AS uploader FROM media WHERE id = ?`)
     .get(q.focusMediaId) as { uploader: string | null } | undefined;
-  if (media?.uploader) {
-    const filter: MediaFilter = { ...base, uploader: media.uploader };
-    relations.push(
-      available('uploader', `Uploader: ${media.uploader}`, filter, computeStatusCounts(db, filter)),
-    );
-  } else if (media && (media.uploader == null || media.uploader === '')) {
-    const filter: MediaFilter = { ...base, uploader: null };
-    relations.push(
-      available('uploader', 'Uploader (leer)', filter, computeStatusCounts(db, filter)),
-    );
-  } else {
+  if (!media) {
     relations.push(unavailable('uploader', 'Uploader', 'Medium nicht gefunden'));
+  } else {
+    const focusUploader: string | null =
+      media.uploader == null || media.uploader === '' ? null : media.uploader;
+    const label =
+      focusUploader == null ? 'Uploader (leer)' : `Uploader: ${focusUploader}`;
+    const baseNorm =
+      base.uploader === undefined
+        ? undefined
+        : base.uploader === null || base.uploader === ''
+          ? null
+          : base.uploader;
+
+    if (baseNorm !== undefined && baseNorm !== focusUploader) {
+      // AND conflict: relation total 0. Filter carries focus uploader for relationToPatch
+      // (applyPatch sets mediaIds=[]) AND mediaIds=[] so gallery with this filter alone is also 0.
+      const filter: MediaFilter = { ...base, uploader: focusUploader, mediaIds: [] };
+      relations.push(
+        available(
+          'uploader',
+          label,
+          filter,
+          EMPTY_COUNTS,
+          'Uploader-Konflikt mit globalem Filter (leere Menge)',
+        ),
+      );
+    } else {
+      const filter: MediaFilter = { ...base, uploader: focusUploader };
+      relations.push(available('uploader', label, filter, computeStatusCounts(db, filter)));
+    }
   }
 
   // provenance
